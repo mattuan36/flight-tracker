@@ -292,3 +292,47 @@ class ApiUsage(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<ApiUsage {self.provider} {self.day} calls={self.calls}>"
+
+
+class PasswordReset(Base):
+    """A one-time password reset token, stored as a hash.
+
+    Only the newest reset for a user is valid: requesting another marks the
+    previous ones used, so a leaked link dies as soon as the owner asks again.
+    """
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    requested_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+
+    user: Mapped[User] = relationship()
+
+    @property
+    def is_usable(self) -> bool:
+        return self.used_at is None and self.expires_at > utcnow()
+
+
+class LoginAttempt(Base):
+    """Sign-in audit and the backing store for throttling.
+
+    Deliberately in the database rather than in memory: three web workers each
+    have their own memory, so counters would not be shared.
+    """
+
+    __tablename__ = "login_attempts"
+    __table_args__ = (
+        Index("ix_login_attempts_email_time", "email", "attempted_at"),
+        Index("ix_login_attempts_ip_time", "ip", "attempted_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    attempted_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

@@ -1,16 +1,31 @@
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} - scaffold{% endblock %}
+{% block title %}{{ app_name }}{% endblock %}
 
 {% block content %}
-  <section class="panel">
-    <h1>{{ app_name }}</h1>
-    <p class="muted">Scaffold is running. Accounts, trackers and price checks land in M1 onwards.</p>
-
-    <dl class="facts">
-      <div><dt>Environment</dt><dd>{{ environment }}</dd></div>
-      <div><dt>Price provider</dt><dd>{{ price_provider }}</dd></div>
-      <div><dt>Health</dt><dd><a href="{{ url_for('main.health') }}">/health</a></dd></div>
-    </dl>
-  </section>
+  {% if current_user.is_authenticated %}
+    <section class="panel">
+      <h1>Hello, {{ current_user.display_name }}</h1>
+      <p class="muted">
+        Your dashboard lands here in M3: the flights you track, the price you would
+        pay, and how far the current fare is from it.
+      </p>
+      <dl class="facts">
+        <div><dt>Email</dt><dd>{{ current_user.email }}</dd></div>
+        <div><dt>Timezone</dt><dd>{{ current_user.timezone }}</dd></div>
+        <div><dt>Role</dt><dd>{{ current_user.role }}</dd></div>
+        <div><dt>Health</dt><dd><a href="{{ url_for('main.health') }}">/health</a></dd></div>
+      </dl>
+    </section>
+  {% else %}
+    <section class="panel">
+      <h1>{{ app_name }}</h1>
+      <p class="muted">
+        A small private flight price tracker. Set the price you would actually pay
+        and get an email when the fare drops below it.
+      </p>
+      <p>Accounts are invite-only.</p>
+      <p><a class="button" href="{{ url_for('auth.login') }}">Sign in</a></p>
+    </section>
+  {% endif %}
 {% endblock %}

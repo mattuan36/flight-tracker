@@ -13,8 +13,8 @@ does that and writes the results to the database.
 |---|---|
 | M0 scaffold, config, CLI skeleton, health check | done |
 | M1 models, Alembic migration, demo seeder | done |
-| M2 invite-only auth + admin CLI | next |
-| M3 trackers + dashboard (mock prices) | planned |
+| M2 invite-only auth + admin CLI | done |
+| M3 trackers + dashboard (mock prices) | next |
 | M6 price checker + alerts | planned |
 
 ## Requirements
@@ -40,6 +40,9 @@ flask --app wsgi run --debug
 
 Open http://localhost:5000. `/health` returns JSON and checks the database.
 
+There is no signup page: `flask --app wsgi invite friend@example.com` prints a
+link to paste to them.
+
 `flask` finds the app through `wsgi.py`, so:
 
 ```bash
@@ -50,6 +53,41 @@ flask --app wsgi seed-demo --help
 ```
 
 Set `FLASK_APP=wsgi` in your shell if you would rather not pass `--app`.
+
+## Accounts and sign-in
+
+There is no registration route. The only ways an account appears are an invite
+link and `seed-demo`.
+
+```bash
+flask --app wsgi invite friend@example.com          # prints a one-time link
+flask --app wsgi invites [--all]                    # pending by default
+flask --app wsgi reissue-invite friend@example.com  # new link, kills the old
+flask --app wsgi revoke-invite friend@example.com
+flask --app wsgi users
+flask --app wsgi disable-user friend@example.com [--purge]
+flask --app wsgi enable-user friend@example.com
+flask --app wsgi reset-link friend@example.com      # prints a reset link
+```
+
+Invite and reset tokens are 32 random bytes, URL-safe, and stored only as a
+SHA-256 hash — the database never holds a working link. Invites expire after
+`INVITE_TTL_DAYS` (7) and work exactly once; opening one while signed in as a
+different account asks before switching. The link is always built from
+`BASE_URL`, never from the request host.
+
+**Password policy:** at least 12 characters, not one of the 10,000 most common
+passwords (bundled from SecLists), and must not contain your email address or
+display name. No composition rules.
+
+**Sign-in:** failures are counted in the database — 5 per email in 15 minutes,
+20 per IP per hour — so throttling works across PythonAnywhere's workers.
+Sessions last 30 days and carry `session_version`; bumping it (disable, password
+reset) ends every device on its next request, including the remember cookie.
+
+**Password reset:** `flask reset-link` prints the link and the admin sends it by
+hand. `/forgot-password` already creates the same single-use token (60 minutes);
+M6 replaces the hand-sending with the mailer. Until then the page says so.
 
 ## Tests and linting
 
@@ -82,6 +120,8 @@ alembic downgrade base                          # drop everything
 | `price_checks` | append-only observation history, including failures |
 | `alerts` | one row per email we decided to send, with an idempotency key |
 | `api_usage` | per-provider daily call counter for the budget guard |
+| `password_resets` | single-use reset tokens (hashed), 60-minute expiry |
+| `login_attempts` | sign-in audit; backs the throttling windows |
 
 Conventions: money in integer cents, timestamps timezone-aware in Python and
 stored as naive UTC (see `UTCDateTime`), deletes cascade from `users`.
@@ -118,6 +158,11 @@ without `--force`.
 | `SECRET_KEY` | dev-only fallback | Required in prod |
 | `PRICE_PROVIDER` | `mock` | Real vendor wired in after the M4b spike |
 | `ADMIN_EMAIL` | blank | Shown in "ask for a new invite" messages |
+| `INVITE_TTL_DAYS` | `7` | Invite lifetime, printed by `flask invite` |
+| `RESET_TTL_MINUTES` | `60` | Reset link lifetime |
+| `LOGIN_MAX_ATTEMPTS` | `5` | Failures per email inside the window |
+| `LOGIN_WINDOW_MINUTES` | `15` | Email throttle window |
+| `LOGIN_IP_MAX_ATTEMPTS` | `20` | Failures per IP per hour |
 
 ## Deploying to PythonAnywhere (M7)
 

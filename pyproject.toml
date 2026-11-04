@@ -13,3 +13,7 @@ known-first-party = ["app"]
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["."]
+filterwarnings = [
+    # Flask-Login still calls datetime.utcnow(); nothing we can do from here.
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:flask_login.*",
+]

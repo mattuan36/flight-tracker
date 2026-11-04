@@ -13,12 +13,13 @@ main_bp = Blueprint("main", __name__)
 
 @main_bp.get("/")
 def index():
-    return render_template(
-        "index.html",
-        app_name=current_app.config["APP_NAME"],
-        environment=current_app.config.get("ENV_NAME", "dev"),
-        price_provider=current_app.config["PRICE_PROVIDER"],
-    )
+    return render_template("index.html", app_name=current_app.config["APP_NAME"])
+
+
+@main_bp.get("/robots.txt")
+def robots():
+    """Private tool: keep it out of search engines entirely."""
+    return "User-agent: *\nDisallow: /\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
 @main_bp.get("/health")

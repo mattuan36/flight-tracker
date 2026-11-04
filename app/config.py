@@ -25,6 +25,34 @@ load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 DEFAULT_BASE_URL = "http://localhost:5000"
 
+# Curated rather than all 600 zoneinfo names: a short list is legible in a
+# form, and validation still runs through ZoneInfo so a typo cannot be stored.
+TIMEZONE_CHOICES: list[tuple[str, str]] = [
+    ("UTC", "UTC"),
+    ("Europe/London", "London"),
+    ("Europe/Dublin", "Dublin"),
+    ("Europe/Paris", "Paris"),
+    ("Europe/Berlin", "Berlin"),
+    ("Europe/Madrid", "Madrid"),
+    ("Europe/Rome", "Rome"),
+    ("Europe/Amsterdam", "Amsterdam"),
+    ("Europe/Lisbon", "Lisbon"),
+    ("Europe/Warsaw", "Warsaw"),
+    ("America/New_York", "New York"),
+    ("America/Chicago", "Chicago"),
+    ("America/Denver", "Denver"),
+    ("America/Los_Angeles", "Los Angeles"),
+    ("America/Toronto", "Toronto"),
+    ("America/Sao_Paulo", "Sao Paulo"),
+    ("Asia/Dubai", "Dubai"),
+    ("Asia/Kolkata", "Kolkata"),
+    ("Asia/Singapore", "Singapore"),
+    ("Asia/Tokyo", "Tokyo"),
+    ("Australia/Perth", "Perth"),
+    ("Australia/Sydney", "Sydney"),
+    ("Pacific/Auckland", "Auckland"),
+]
+
 
 def _bool(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
@@ -67,6 +95,15 @@ def base_config() -> dict:
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         "SQLALCHEMY_ENGINE_OPTIONS": {"pool_pre_ping": True},
         "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO").upper(),
+        # Auth policy.
+        "INVITE_TTL_DAYS": int(os.environ.get("INVITE_TTL_DAYS", "7")),
+        "RESET_TTL_MINUTES": int(os.environ.get("RESET_TTL_MINUTES", "60")),
+        "PASSWORD_MIN_LENGTH": 12,
+        "PASSWORD_MAX_LENGTH": 128,
+        "LOGIN_MAX_ATTEMPTS": int(os.environ.get("LOGIN_MAX_ATTEMPTS", "5")),
+        "LOGIN_WINDOW_MINUTES": int(os.environ.get("LOGIN_WINDOW_MINUTES", "15")),
+        "LOGIN_IP_MAX_ATTEMPTS": int(os.environ.get("LOGIN_IP_MAX_ATTEMPTS", "20")),
+        "TIMEZONE_CHOICES": TIMEZONE_CHOICES,
         # Sessions: a private tool used occasionally, so long-lived and httpOnly.
         "PERMANENT_SESSION_LIFETIME": timedelta(days=30),
         "REMEMBER_COOKIE_DURATION": timedelta(days=30),

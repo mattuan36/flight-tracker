@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+
+{% block title %}Join {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <section class="panel panel-narrow">
+    <h1>You are joining as {{ invite.email }}</h1>
+    <p class="muted">
+      Choose a password and confirm how your times should be shown. This invite
+      works once and expires after {{ config.INVITE_TTL_DAYS }} days.
+    </p>
+
+    <form method="post" action="{{ url_for('auth.accept_invite', token=request.view_args['token']) }}">
+      {{ form.hidden_tag() }}
+      {{ field(form.display_name, autocomplete="name") }}
+      {{ field(form.password, autocomplete="new-password", type="password") }}
+      <p class="muted small">At least {{ config.PASSWORD_MIN_LENGTH }} characters. Length matters more than symbols.</p>
+      {{ field(form.confirm, autocomplete="new-password", type="password") }}
+      {{ field(form.timezone) }}
+      {{ form.submit(class_="button") }}
+    </form>
+  </section>
+{% endblock %}

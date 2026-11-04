@@ -102,6 +102,10 @@ def seed_demo_command(
 
 
 def register_cli(app) -> None:
+    from .cli_admin import COMMANDS
+
     app.cli.add_command(config_command)
     app.cli.add_command(health_command)
     app.cli.add_command(seed_demo_command)
+    for command in COMMANDS:
+        app.cli.add_command(command)

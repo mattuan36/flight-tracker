@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Switch account - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <section class="panel panel-narrow">
+    <h1>You are signed in as {{ current.email }}</h1>
+    <p class="muted">
+      This invite is for <strong>{{ invite.email }}</strong>. Continuing signs
+      you out of the current account first, so the two never get mixed up.
+    </p>
+    <form method="post" action="{{ url_for('auth.switch_account', token=request.view_args['token']) }}">
+      {{ form.hidden_tag() }}
+      {{ form.submit(class_="button") }}
+    </form>
+    <p class="muted small"><a href="{{ url_for('main.index') }}">Cancel</a></p>
+  </section>
+{% endblock %}

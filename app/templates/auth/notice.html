@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <section class="panel panel-narrow">
+    <h1>{{ title }}</h1>
+    <p class="muted">{{ message }}</p>
+    {% if link %}
+      <p>
+        <a class="button" href="{{ link }}">
+          {% if email %}Sign in as {{ email }}{% else %}Continue{% endif %}
+        </a>
+      </p>
+    {% endif %}
+  </section>
+{% endblock %}

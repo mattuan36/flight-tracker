@@ -10,6 +10,15 @@
     <header class="site-header">
       <a class="brand" href="{{ url_for('main.index') }}">{{ config.APP_NAME }}</a>
       <nav class="site-nav">
+        {% if current_user.is_authenticated %}
+          <span class="muted small">{{ current_user.email }}</span>
+          <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="link-button">Sign out</button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('auth.login') }}">Sign in</a>
+        {% endif %}
         {% block nav %}{% endblock %}
       </nav>
     </header>

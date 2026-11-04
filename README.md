@@ -12,8 +12,8 @@ does that and writes the results to the database.
 | Milestone | State |
 |---|---|
 | M0 scaffold, config, CLI skeleton, health check | done |
-| M1 models + migrations | next |
-| M2 invite-only auth + admin CLI | planned |
+| M1 models, Alembic migration, demo seeder | done |
+| M2 invite-only auth + admin CLI | next |
 | M3 trackers + dashboard (mock prices) | planned |
 | M6 price checker + alerts | planned |
 
@@ -33,6 +33,8 @@ pip install -r requirements-dev.txt
 copy .env.example .env          # Windows
 # cp .env.example .env          # macOS / Linux
 
+alembic upgrade head
+flask --app wsgi seed-demo --email you@example.com --password "pick-something-long"
 flask --app wsgi run --debug
 ```
 
@@ -44,6 +46,7 @@ Open http://localhost:5000. `/health` returns JSON and checks the database.
 flask --app wsgi config        # resolved settings, secrets masked
 flask --app wsgi health        # database check, non-zero exit on failure
 flask --app wsgi routes
+flask --app wsgi seed-demo --help
 ```
 
 Set `FLASK_APP=wsgi` in your shell if you would rather not pass `--app`.
@@ -55,6 +58,50 @@ pytest
 ruff check .
 ruff format --check .
 ```
+
+The suite runs the real Alembic migration against a temporary SQLite file, so a
+migration that does not match the models fails CI rather than production.
+
+## Database
+
+SQLite locally, MySQL on PythonAnywhere. Alembic is the only way the schema
+changes — never `db.create_all()` outside tests.
+
+```bash
+alembic upgrade head                            # apply migrations
+alembic revision --autogenerate -m "add thing"  # write a new one
+alembic check                                   # models vs migrations; non-zero if they differ
+alembic downgrade base                          # drop everything
+```
+
+| Table | Holds |
+|---|---|
+| `users` | accounts, role, password hash, `session_version` for logging out every device |
+| `invites` | one-time signup tokens (stored as a hash) |
+| `tracked_flights` | route, dates, target price, last known price |
+| `price_checks` | append-only observation history, including failures |
+| `alerts` | one row per email we decided to send, with an idempotency key |
+| `api_usage` | per-provider daily call counter for the budget guard |
+
+Conventions: money in integer cents, timestamps timezone-aware in Python and
+stored as naive UTC (see `UTCDateTime`), deletes cascade from `users`.
+
+`invites.pending_key` is a stored generated column that equals the email while
+an invite is still open and `NULL` otherwise, with a unique index. That is how
+"one pending invite per email" works on MySQL, which has no partial indexes.
+MariaDB supports indexing stored generated columns; the first `alembic upgrade`
+on PythonAnywhere is the moment to confirm it.
+
+### Demo data
+
+```bash
+flask --app wsgi seed-demo --email you@example.com --password "..." [--reset]
+```
+
+Creates (or reuses) an admin account, three tracked flights, ~270 price checks
+over 45 days and a sent alert, all from a fixed random seed. `--reset` wipes
+that user's tracked flights first. It refuses to run when `APP_ENV=prod`
+without `--force`.
 
 ## Configuration
 

@@ -28,6 +28,7 @@ def create_app(config_name: str | None = None) -> Flask:
     login_manager.init_app(app)
     csrf.init_app(app)
 
+    from . import models  # noqa: F401  (registers tables on Base.metadata)
     from .cli import register_cli
     from .main.routes import main_bp
 

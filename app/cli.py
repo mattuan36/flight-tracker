@@ -70,6 +70,38 @@ def health_command() -> None:
     click.echo("status: ok")
 
 
+@click.command("seed-demo")
+@click.option("--email", required=True, help="Account to create, or reuse if it already exists.")
+@click.option("--password", required=True, help="Demo accounts only; this lands in shell history.")
+@click.option("--name", default=None, help="Display name; defaults to the email local part.")
+@click.option("--reset", is_flag=True, help="Delete this user's tracked flights before seeding.")
+@click.option("--force", is_flag=True, help="Permit running against APP_ENV=prod.")
+def seed_demo_command(
+    email: str, password: str, name: str | None, reset: bool, force: bool
+) -> None:
+    """Create a demo account with tracked flights and price history."""
+    from .seed import seed_demo
+
+    if current_app.config.get("ENV_NAME") == "prod" and not force:
+        raise click.ClickException(
+            "refusing to seed demo data in production (pass --force if you really mean it)"
+        )
+
+    result = seed_demo(email, password, display_name=name, reset=reset)
+    user = result["user"]
+
+    click.echo(f"user:    {user.email} (role={user.role}, id={user.id})")
+    if result["skipped"]:
+        click.echo(f"skipped: {result['skipped']}")
+        return
+    click.echo(f"flights: {result['created_flights']} tracked flights")
+    click.echo(f"checks:  {result['created_checks']} price checks")
+    click.echo(f"alerts:  {result['created_alerts']} sent alert(s)")
+    if result["created_user"]:
+        click.echo("sign in with the password you passed to this command")
+
+
 def register_cli(app) -> None:
     app.cli.add_command(config_command)
     app.cli.add_command(health_command)
+    app.cli.add_command(seed_demo_command)

@@ -12,8 +12,10 @@ from app.extensions import db
 def app():
     application = create_app("test")
     with application.app_context():
+        db.create_all()
         yield application
         db.session.remove()
+        db.drop_all()
 
 
 @pytest.fixture

@@ -1,0 +1,10 @@
+# Normalise line endings: LF in the repo and on Linux (PythonAnywhere), so the
+# Windows checkout and the server checkout produce identical diffs.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary

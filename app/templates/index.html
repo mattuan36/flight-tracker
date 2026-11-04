@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} - scaffold{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <h1>{{ app_name }}</h1>
+    <p class="muted">Scaffold is running. Accounts, trackers and price checks land in M1 onwards.</p>
+
+    <dl class="facts">
+      <div><dt>Environment</dt><dd>{{ environment }}</dd></div>
+      <div><dt>Price provider</dt><dd>{{ price_provider }}</dd></div>
+      <div><dt>Health</dt><dd><a href="{{ url_for('main.health') }}">/health</a></dd></div>
+    </dl>
+  </section>
+{% endblock %}

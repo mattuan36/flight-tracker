@@ -11,6 +11,9 @@
       <a class="brand" href="{{ url_for('main.index') }}">{{ config.APP_NAME }}</a>
       <nav class="site-nav">
         {% if current_user.is_authenticated %}
+          <a href="{{ url_for('main.index') }}">Flights</a>
+          <a href="{{ url_for('trackers.new') }}">Add flight</a>
+          <span class="nav-sep" aria-hidden="true"></span>
           <span class="muted small">{{ current_user.email }}</span>
           <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -41,5 +44,7 @@
       <span>{{ config.APP_NAME }}</span>
       <span class="muted">{{ config.get('ENV_NAME', 'dev') }}</span>
     </footer>
+
+    {% block scripts %}{% endblock %}
   </body>
 </html>

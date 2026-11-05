@@ -1,7 +1,7 @@
-{% macro field(field, autocomplete=None, type=None) %}
+{% macro field(field, autocomplete="off") %}
   <div class="field">
     {{ field.label }}
-    {{ field(class_="input", autocomplete=autocomplete or "off", type=type) }}
+    {{ field(class_="input", autocomplete=autocomplete, **kwargs) }}
     {% for error in field.errors %}
       <p class="field-error">{{ error }}</p>
     {% endfor %}

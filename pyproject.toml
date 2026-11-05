@@ -5,6 +5,8 @@ src = ["app", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+# Date ranges read better with an en dash; it is not a lookalike here.
+allowed-confusables = ["–"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
@@ -16,4 +18,6 @@ pythonpath = ["."]
 filterwarnings = [
     # Flask-Login still calls datetime.utcnow(); nothing we can do from here.
     "ignore:datetime.datetime.utcnow:DeprecationWarning:flask_login.*",
+    # WTForms 3.3 deprecates tuple choices; they still work, and 3.4 is pinned out.
+    "ignore:Passing SelectField choices as tuples is deprecated:DeprecationWarning:wtforms.*",
 ]

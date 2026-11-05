@@ -14,7 +14,7 @@ does that and writes the results to the database.
 | M0 scaffold, config, CLI skeleton, health check | done |
 | M1 models, Alembic migration, demo seeder | done |
 | M2 invite-only auth + admin CLI | done |
-| M3 trackers + dashboard (mock prices) | next |
+| M3 trackers, dashboard, mock price checks | done |
 | M6 price checker + alerts | planned |
 
 ## Requirements
@@ -89,6 +89,31 @@ reset) ends every device on its next request, including the remember cookie.
 hand. `/forgot-password` already creates the same single-use token (60 minutes);
 M6 replaces the hand-sending with the mailer. Until then the page says so.
 
+## Tracking flights
+
+The dashboard at `/` lists your tracked flights: current fare, the gap to your
+target, the lowest fare seen and a sparkline of recent checks. Each row opens a
+detail page with the full chart (the dashed line is your target), the recent
+checks and any alerts that were sent.
+
+```bash
+flask --app wsgi check-prices                 # only flights whose interval is due
+flask --app wsgi check-prices --all           # ignore the interval
+flask --app wsgi check-prices --email you@example.com
+flask --app wsgi check-prices --flight 7      # one tracker, by id
+```
+
+Web requests never call a fare provider: the dashboard only reads the database.
+`check-prices` is the piece that fetches and records quotes; M6 moves the same
+service into the hourly scheduled task and adds the email. Until the vendor is
+chosen (M4b), `PRICE_PROVIDER=mock` returns a deliberately fake, deterministic
+random walk.
+
+Adding, editing, pausing, resuming and deleting all live under `/flights`. Every
+page is scoped to the signed-in account, and another account's tracker answers
+404 rather than 403 so ids cannot be probed. The airline is an optional label
+shown after the route; fares stay keyed on the airports and dates.
+
 ## Tests and linting
 
 ```bash
@@ -116,7 +141,7 @@ alembic downgrade base                          # drop everything
 |---|---|
 | `users` | accounts, role, password hash, `session_version` for logging out every device |
 | `invites` | one-time signup tokens (stored as a hash) |
-| `tracked_flights` | route, dates, target price, last known price |
+| `tracked_flights` | route, airline label, dates, target price, last known price |
 | `price_checks` | append-only observation history, including failures |
 | `alerts` | one row per email we decided to send, with an idempotency key |
 | `api_usage` | per-provider daily call counter for the budget guard |
@@ -138,10 +163,10 @@ on PythonAnywhere is the moment to confirm it.
 flask --app wsgi seed-demo --email you@example.com --password "..." [--reset]
 ```
 
-Creates (or reuses) an admin account, three tracked flights, ~270 price checks
-over 45 days and a sent alert, all from a fixed random seed. `--reset` wipes
-that user's tracked flights first. It refuses to run when `APP_ENV=prod`
-without `--force`.
+Creates (or reuses) an admin account, three tracked flights with airlines, ~270
+price checks over 45 days and sent alerts, all from a fixed random seed.
+`--reset` wipes that user's tracked flights first. It refuses to run when
+`APP_ENV=prod` without `--force`.
 
 ## Configuration
 

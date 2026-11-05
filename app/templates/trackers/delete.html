@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Delete {{ flight.route }} - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <section class="panel panel-narrow">
+    <h1>Delete {{ flight.origin_iata }} <span class="arrow">→</span> {{ flight.dest_iata }}?</h1>
+    <p class="muted">
+      This removes the tracker, its {{ flight.price_checks|length }} recorded price
+      check{{ '' if flight.price_checks|length == 1 else 's' }} and any alerts. It cannot be undone.
+    </p>
+    <form method="post" action="{{ url_for('trackers.delete', flight_id=flight.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-actions">
+        <button class="button button-danger" type="submit">Delete permanently</button>
+        <a class="button button-quiet" href="{{ url_for('trackers.detail', flight_id=flight.id) }}">Keep it</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

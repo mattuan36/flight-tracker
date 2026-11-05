@@ -8,3 +8,6 @@ PyMySQL==1.2.3
 email-validator==2.3.0
 python-dotenv==1.2.4
 SQLAlchemy==2.1.8
+WTForms==3.3.2
+# Windows has no system tz database; PythonAnywhere does, and this is a no-op there.
+tzdata==2026.6

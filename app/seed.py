@@ -25,6 +25,7 @@ DEMO_FLIGHTS: list[dict[str, Any]] = [
     {
         "origin_iata": "LHR",
         "dest_iata": "JFK",
+        "airline": "British Airways",
         "depart": date(2027, 3, 14),
         "return_": date(2027, 3, 21),
         "target_cents": 42000,
@@ -34,6 +35,7 @@ DEMO_FLIGHTS: list[dict[str, Any]] = [
     {
         "origin_iata": "LGW",
         "dest_iata": "BCN",
+        "airline": "easyJet",
         "depart": date(2027, 6, 2),
         "return_": None,
         "target_cents": 9500,
@@ -43,6 +45,7 @@ DEMO_FLIGHTS: list[dict[str, Any]] = [
     {
         "origin_iata": "MAN",
         "dest_iata": "AYT",
+        "airline": "Jet2",
         "depart": date(2027, 7, 19),
         "return_": date(2027, 8, 2),
         "target_cents": None,
@@ -114,6 +117,7 @@ def seed_demo(
             user=user,
             origin_iata=spec["origin_iata"],
             dest_iata=spec["dest_iata"],
+            airline=spec.get("airline"),
             depart_date=spec["depart"],
             return_date=spec["return_"],
             cabin="economy",

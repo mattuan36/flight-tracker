@@ -24,6 +24,7 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+.openchamber/
 
 # Editors / OS
 .vscode/

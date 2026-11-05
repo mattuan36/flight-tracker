@@ -32,10 +32,14 @@ def create_app(config_name: str | None = None) -> Flask:
     from .auth import auth_bp
     from .cli import register_cli
     from .main.routes import main_bp
+    from .templating import register_template_helpers
+    from .trackers import trackers_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(trackers_bp)
     register_cli(app)
+    register_template_helpers(app)
     _security_headers(app)
 
     app.logger.debug("created %s app in %s mode", app.config["APP_NAME"], env_name)

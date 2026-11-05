@@ -15,6 +15,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from .extensions import db
+from .money import format_cents
+from .services import emails as email_service
 
 _URL_PASSWORD = re.compile(r"(?<=://)([^:/@]+):([^@]*)@")
 
@@ -101,11 +103,59 @@ def seed_demo_command(
         click.echo("sign in with the password you passed to this command")
 
 
+@click.command("check-prices")
+@click.option("--email", default=None, help="Only this account's flights.")
+@click.option("--flight", "flight_id", type=int, default=None, help="Only this tracker id.")
+@click.option("--all", "run_all", is_flag=True, help="Ignore each flight's check interval.")
+def check_prices_command(email: str | None, flight_id: int | None, run_all: bool) -> None:
+    """Record fares from the configured provider (mock until M4b).
+
+    Run by hand now; M6 moves the same service into the hourly scheduled task.
+    """
+    from .models import TrackedFlight, User
+    from .services import checks
+
+    user_id = None
+    if email:
+        try:
+            normalised = email_service.clean(email)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+        user = db.session.scalar(db.select(User).where(User.email == normalised))
+        if user is None:
+            raise click.ClickException(f"no account for {normalised}")
+        user_id = user.id
+
+    if flight_id is not None:
+        tracker = db.session.get(TrackedFlight, flight_id)
+        if tracker is None:
+            raise click.ClickException(f"no tracker with id {flight_id}")
+        if not tracker.is_active:
+            raise click.ClickException(f"tracker {flight_id} is paused; resume it first")
+
+    results = checks.run_checks(only_due=not run_all, user_id=user_id, flight_id=flight_id)
+    if not results:
+        click.echo("nothing due; use --all to check every active tracker")
+        return
+
+    ok = 0
+    for flight, check in results:
+        if check.ok:
+            ok += 1
+            price = format_cents(check.price_cents, check.currency or flight.currency)
+            click.echo(f"{flight.route:<8} {flight.depart_date.isoformat()}  {price:>10}")
+        else:
+            click.echo(f"{flight.route:<8} {flight.depart_date.isoformat()}  failed: {check.error}")
+
+    click.echo(f"\n{len(results)} checked, {ok} ok, {len(results) - ok} failed")
+
+
 def register_cli(app) -> None:
     from .cli_admin import COMMANDS
 
     app.cli.add_command(config_command)
     app.cli.add_command(health_command)
     app.cli.add_command(seed_demo_command)
+    app.cli.add_command(check_prices_command)
     for command in COMMANDS:
         app.cli.add_command(command)

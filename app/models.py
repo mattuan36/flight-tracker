@@ -183,6 +183,7 @@ class TrackedFlight(TimestampMixin, Base):
 
     origin_iata: Mapped[str] = mapped_column(String(3), nullable=False)
     dest_iata: Mapped[str] = mapped_column(String(3), nullable=False)
+    airline: Mapped[str | None] = mapped_column(String(80), nullable=True)
     depart_date: Mapped[date] = mapped_column(Date, nullable=False)
     return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cabin: Mapped[str] = mapped_column(String(16), default="economy", nullable=False)
@@ -217,6 +218,34 @@ class TrackedFlight(TimestampMixin, Base):
     @property
     def route(self) -> str:
         return f"{self.origin_iata}-{self.dest_iata}"
+
+    @property
+    def is_below_target(self) -> bool:
+        return (
+            self.target_price_cents is not None
+            and self.last_price_cents is not None
+            and self.last_price_cents <= self.target_price_cents
+        )
+
+    @property
+    def target_gap_cents(self) -> int | None:
+        """How far the current fare is from the target; negative means below."""
+        if self.target_price_cents is None or self.last_price_cents is None:
+            return None
+        return self.last_price_cents - self.target_price_cents
+
+    @property
+    def price_state(self) -> str:
+        """One word the dashboard can style: paused, waiting, below, above, watching."""
+        if not self.is_active:
+            return "paused"
+        if self.last_price_cents is None:
+            return "waiting"
+        if self.is_below_target:
+            return "below"
+        if self.target_price_cents is not None:
+            return "above"
+        return "watching"
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<TrackedFlight {self.route} {self.depart_date}>"

@@ -140,8 +140,8 @@ def test_accepting_creates_an_account_and_signs_in(client):
     assert invite.accepted_user_id == user.id
     assert invite.pending_key is None
 
-    # Signed in: the dashboard greets them by name.
-    assert b"Hello, Invited" in client.get("/").data
+    # Signed in: the dashboard is theirs.
+    assert b"Your flights" in client.get("/").data
 
 
 def test_used_invite_frees_the_address_for_a_new_one(client):
@@ -338,7 +338,7 @@ def test_reset_link_changes_the_password_and_signs_in(client):
     assert user.session_version == 1
     db.session.refresh(reset)
     assert reset.used_at is not None
-    assert b"Hello, Friend" in client.get("/").data
+    assert b"Your flights" in client.get("/").data
 
 
 def test_reset_link_works_once(client):

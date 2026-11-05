@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}{{ flight.route }} - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <p class="back-link small"><a href="{{ url_for('main.index') }}">← All flights</a></p>
+
+  <div class="page-head">
+    <div>
+      <h1>
+        {{ flight.origin_iata }} <span class="arrow">→</span> {{ flight.dest_iata }}
+        {% if flight.airline %}<span class="airline">{{ flight.airline }}</span>{% endif %}
+        {% if not flight.is_active %}<span class="badge">paused</span>{% endif %}
+      </h1>
+      <p class="muted small">
+        {{ flight.depart_date|localdate }}{% if flight.return_date %} to {{ flight.return_date|localdate }}{% endif %}
+        · {{ flight.cabin|cabin }} · {{ flight.adults }} adult{{ '' if flight.adults == 1 else 's' }}
+        · checked every {{ flight.check_interval_hours }} hours
+      </p>
+    </div>
+    <div class="actions">
+      <a class="button button-quiet" href="{{ url_for('trackers.edit', flight_id=flight.id) }}">Edit</a>
+      <form method="post" action="{{ url_for('trackers.toggle', flight_id=flight.id) }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="button button-quiet" type="submit">
+          {{ 'Resume' if not flight.is_active else 'Pause' }}
+        </button>
+      </form>
+      <a class="button button-quiet button-danger-text" href="{{ url_for('trackers.delete_confirm', flight_id=flight.id) }}">Delete</a>
+    </div>
+  </div>
+
+  <section class="panel price-panel">
+    <div>
+      <span class="price big{% if flight.last_price_cents is none %} muted{% endif %}">
+        {% if flight.last_price_cents is not none %}{{ flight.last_price_cents|money(flight.currency) }}{% else %}—{% endif %}
+      </span>
+      <p class="muted small">
+        {% if flight.last_checked_at %}
+          checked {{ flight.last_checked_at|localdt }} ({{ flight.last_checked_at|ago }})
+        {% else %}
+          not checked yet
+        {% endif %}
+      </p>
+    </div>
+    <div class="price-side">
+      {% if flight.target_price_cents %}
+        <p>
+          Target <strong>{{ flight.target_price_cents|money(flight.currency) }}</strong>
+          {% if flight.price_state == 'below' %}
+            <span class="badge badge-good">below</span>
+          {% elif flight.price_state == 'above' %}
+            <span class="badge">{{ (flight.target_gap_cents|abs)|money(flight.currency) }} to go</span>
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="muted">Watching for any drop from the usual fare.</p>
+      {% endif %}
+      <p class="muted small">
+        Lowest seen
+        {% if flight.lowest_price_cents %}{{ flight.lowest_price_cents|money(flight.currency) }}{% else %}—{% endif %}
+      </p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="section-title">Price history</h2>
+    {% set chart = price_chart(history, flight.target_price_cents, 640, 220, flight.currency) %}
+    {% if chart %}
+      <div class="chart" data-price-chart>
+        <div class="chart-tip" hidden></div>
+        <svg class="price-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+             tabindex="0" role="img"
+             aria-label="Price history: dates along the bottom, fares on the left. Use the left and right arrow keys to inspect each check.">
+          {% for tick in chart.y_ticks %}
+            <line class="chart-grid" x1="{{ chart.left }}" x2="{{ chart.right }}"
+                  y1="{{ tick.y }}" y2="{{ tick.y }}"></line>
+            <text class="chart-label" x="{{ chart.left - 8 }}" y="{{ tick.y }}"
+                  text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
+          {% endfor %}
+          <line class="chart-axis" x1="{{ chart.left }}" x2="{{ chart.right }}"
+                y1="{{ chart.bottom }}" y2="{{ chart.bottom }}"></line>
+          {% for tick in chart.x_ticks %}
+            <text class="chart-label" x="{{ tick.x }}" y="{{ chart.bottom + 17 }}"
+                  text-anchor="{{ tick.anchor }}">{{ tick.label }}</text>
+          {% endfor %}
+          {% if chart.target_y is not none %}
+            <line class="spark-target" x1="{{ chart.left }}" x2="{{ chart.right }}"
+                  y1="{{ chart.target_y }}" y2="{{ chart.target_y }}"></line>
+          {% endif %}
+          {% if chart.target_label %}
+            <text class="chart-target-label" x="{{ chart.target_label.x }}"
+                  y="{{ chart.target_label.y }}">{{ chart.target_label.text }}</text>
+          {% endif %}
+          <polyline points="{{ chart.polyline }}" fill="none" stroke="currentColor"
+                    stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></polyline>
+          <circle class="chart-cursor" r="3.5" hidden></circle>
+          {% for point in chart.points %}
+            <circle class="chart-hit" cx="{{ point.x }}" cy="{{ point.y }}" r="6"
+                    tabindex="-1" data-x="{{ point.x }}" data-y="{{ point.y }}"
+                    data-when="{{ point.when }}" data-price="{{ point.price }}"></circle>
+          {% endfor %}
+        </svg>
+      </div>
+      <p class="muted small">
+        {{ history|length }} successful checks, oldest first.
+        {% if flight.target_price_cents %}The dashed line is your {{ flight.target_price_cents|money(flight.currency) }} target.{% endif %}
+        Hover or tap a point for its exact date and fare.
+      </p>
+    {% else %}
+      <p class="muted">The chart appears once there are a couple of successful checks.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2 class="section-title">Recent checks</h2>
+    {% if checks %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>When</th><th class="num">Price</th><th>Result</th></tr>
+          </thead>
+          <tbody>
+            {% for check in checks %}
+              <tr>
+                <td>{{ check.checked_at|localdt }}</td>
+                <td class="num">
+                  {% if check.ok %}{{ check.price_cents|money(check.currency or flight.currency) }}{% else %}—{% endif %}
+                </td>
+                <td>
+                  {% if check.ok %}
+                    <span class="muted">{{ check.provider }}</span>
+                  {% else %}
+                    <span class="text-danger">{{ check.error }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">No checks yet. The next price run records the first one.</p>
+    {% endif %}
+  </section>
+
+  {% if flight.alerts %}
+    <section class="panel">
+      <h2 class="section-title">Alerts sent</h2>
+      <ul class="plain-list">
+        {% for alert in flight.alerts|sort(attribute='sent_at', reverse=true) %}
+          <li>
+            {{ alert.sent_at|localdt }} — {{ alert.price_cents|money(flight.currency) }}
+            against a target of {{ alert.target_cents|money(flight.currency) }}
+            <span class="badge">{{ alert.email_status }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='chart.js') }}" defer></script>
+{% endblock %}

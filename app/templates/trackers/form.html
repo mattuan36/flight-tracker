@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_form.html" import field %}
+
+{% block title %}{{ 'Edit ' ~ flight.route if flight else 'Add a flight' }} - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <p class="back-link small"><a href="{{ url_for('main.index') }}">← All flights</a></p>
+
+  <section class="panel">
+    <h1>{{ 'Edit ' ~ flight.route if flight else 'Add a flight' }}</h1>
+    <p class="muted small">
+      The checker looks at this route every so often and compares the fare with the
+      number you set.
+    </p>
+
+    <form method="post" action="{{ request.path }}" class="stack">
+      {{ form.hidden_tag() }}
+
+      <div class="field-row">
+        {{ field(form.origin_iata, list="airports", maxlength="3") }}
+        {{ field(form.dest_iata, list="airports", maxlength="3") }}
+        {{ field(form.airline, list="airlines", maxlength="80") }}
+      </div>
+      <p class="hint muted small">
+        Three-letter airport codes, like LHR, JFK or BCN. The airline is optional and
+        only used as a label.
+      </p>
+
+      <div class="field-row">
+        {{ field(form.depart_date) }}
+        {{ field(form.return_date) }}
+      </div>
+
+      <div class="field-row">
+        {{ field(form.cabin) }}
+        {{ field(form.adults, min="1", max="9") }}
+        {{ field(form.currency) }}
+      </div>
+
+      <div class="field">
+        <span class="field-label">{{ form.mode.label.text }}</span>
+        <div class="radio-row">
+          {% for option in form.mode %}
+            <label class="radio">{{ option() }} {{ option.label.text }}</label>
+          {% endfor %}
+        </div>
+        {% for error in form.mode.errors %}
+          <p class="field-error">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      {{ field(form.target, step="0.01", inputmode="decimal") }}
+      <p class="hint muted small">
+        Used when "below a target price" is chosen. Leave it empty to adopt the first
+        fare the checker sees.
+      </p>
+
+      {{ field(form.check_interval_hours) }}
+
+      <div class="form-actions">
+        {{ form.submit(class_="button") }}
+        <a class="button button-quiet" href="{{ url_for('main.index') }}">Cancel</a>
+        {% if flight %}
+          <a class="button button-quiet button-danger-text push-right" href="{{ url_for('trackers.delete_confirm', flight_id=flight.id) }}">Delete</a>
+        {% endif %}
+      </div>
+    </form>
+
+    <datalist id="airports">
+      {% for code, city, name in airports %}
+        <option value="{{ code }}">{{ city }} — {{ name }}</option>
+      {% endfor %}
+    </datalist>
+    <datalist id="airlines">
+      {% for airline in airlines %}
+        <option value="{{ airline }}"></option>
+      {% endfor %}
+    </datalist>
+  </section>
+{% endblock %}

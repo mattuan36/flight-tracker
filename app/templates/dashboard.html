@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_sparkline.html" import sparkline %}
+
+{% block title %}Your flights - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Your flights</h1>
+      <p class="muted small">
+        {% if flights %}
+          {{ active_count }} active{% if below_count %} · {{ below_count }} below target{% endif %}
+        {% else %}
+          Nothing tracked yet
+        {% endif %}
+      </p>
+    </div>
+    <a class="button" href="{{ url_for('trackers.new') }}">Add a flight</a>
+  </div>
+
+  {% if not flights %}
+    <section class="panel empty">
+      <p>Add a route and the price you would actually pay. The checker records fares a few times a day and emails you when one falls below your number.</p>
+      <p><a class="button" href="{{ url_for('trackers.new') }}">Add your first flight</a></p>
+    </section>
+  {% else %}
+    <ul class="flight-list">
+      {% for flight in flights %}
+        <li class="flight-card{{ ' is-paused' if not flight.is_active }}">
+          <div class="flight-route">
+            <h2>
+              <a href="{{ url_for('trackers.detail', flight_id=flight.id) }}">
+                {{ flight.origin_iata }} <span class="arrow">→</span> {{ flight.dest_iata }}
+              </a>
+              {% if flight.airline %}<span class="airline">{{ flight.airline }}</span>{% endif %}
+            </h2>
+            <p class="muted small">
+              {{ flight.depart_date|shortdates(flight.return_date) }}
+              · {{ flight.cabin|cabin }}{% if flight.adults > 1 %} · {{ flight.adults }} adults{% endif %}
+            </p>
+          </div>
+
+          <div class="flight-price">
+            <span class="price{% if flight.last_price_cents is none %} muted{% endif %}">
+              {% if flight.last_price_cents is not none %}{{ flight.last_price_cents|money(flight.currency) }}{% else %}—{% endif %}
+            </span>
+            {% if flight.price_state == 'below' %}
+              <span class="badge badge-good">{{ (flight.target_gap_cents|abs)|money(flight.currency) }} under target</span>
+            {% elif flight.price_state == 'above' %}
+              <span class="badge">{{ flight.target_gap_cents|money(flight.currency) }} over target</span>
+            {% elif flight.price_state == 'watching' %}
+              <span class="badge">watching for a drop</span>
+            {% elif flight.price_state == 'paused' %}
+              <span class="badge">paused</span>
+            {% else %}
+              <span class="badge">waiting for the first check</span>
+            {% endif %}
+          </div>
+
+          <div class="flight-spark">
+            {{ sparkline(flight.price_checks[-30:]|map(attribute='price_cents')|select('number')|list, 150) }}
+          </div>
+
+          <p class="flight-meta muted small">
+            {% if flight.target_price_cents %}target {{ flight.target_price_cents|money(flight.currency) }} · {% endif %}
+            {% if flight.lowest_price_cents %}lowest {{ flight.lowest_price_cents|money(flight.currency) }} · {% endif %}
+            checked {{ flight.last_checked_at|ago }}
+          </p>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

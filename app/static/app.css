@@ -61,7 +61,7 @@ body {
 }
 
 .site-main {
-  width: min(46rem, 100% - 2.5rem);
+  width: min(52rem, 100% - 2.5rem);
   margin: 2.5rem auto;
 }
 
@@ -174,8 +174,213 @@ a { color: var(--accent); }
   flex-wrap: wrap;
 }
 
+.nav-sep { width: 1px; height: 1.1rem; background: var(--line); }
+
 .small { font-size: 0.82rem; }
 
 .flash-error { border-left: 3px solid var(--danger); }
 .flash-success { border-left: 3px solid var(--success); }
 .flash-info { border-left: 3px solid var(--accent); }
+
+/* --- dashboard ------------------------------------------------------------ */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+  flex-wrap: wrap;
+}
+
+.page-head h1 { margin: 0; }
+.back-link { margin: 0 0 0.75rem; }
+.arrow { color: var(--muted); }
+
+.airline {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 0.45rem;
+  letter-spacing: 0;
+}
+
+.flight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.flight-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "route price spark"
+    "meta meta meta";
+  gap: 0.35rem 1.1rem;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+}
+
+.flight-card.is-paused { opacity: 0.65; }
+
+.flight-route { grid-area: route; }
+.flight-route h2 { margin: 0; font-size: 1.05rem; letter-spacing: -0.01em; }
+.flight-route h2 a { color: var(--fg); text-decoration: none; }
+.flight-route h2 a:hover { color: var(--accent); }
+.flight-route p { margin: 0.15rem 0 0; }
+
+.flight-price {
+  grid-area: price;
+  text-align: right;
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+}
+
+.flight-spark { grid-area: spark; display: flex; justify-content: flex-end; }
+.flight-meta { grid-area: meta; margin: 0; }
+
+.price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: 1.1rem;
+}
+
+.price.big { font-size: 2rem; letter-spacing: -0.02em; }
+.spark { color: var(--accent); display: block; }
+.spark-target { stroke: currentColor; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.4; }
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.badge-good { color: var(--success); border-color: currentColor; }
+
+.empty { text-align: center; }
+.empty p { margin: 0.35rem 0 1rem; }
+
+/* --- detail --------------------------------------------------------------- */
+
+.actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.button-quiet { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.button-danger { background: var(--danger); }
+.button-danger-text { color: var(--danger); }
+.button-danger-text:hover { border-color: var(--danger); }
+
+.price-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.price-panel p { margin: 0.25rem 0 0; }
+.price-side { text-align: right; }
+.price-side p { margin: 0 0 0.3rem; }
+
+.section-title {
+  font-size: 0.95rem;
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.panel + .panel { margin-top: 1rem; }
+
+.chart { position: relative; color: var(--accent); overflow-x: auto; }
+.chart svg { max-width: 100%; height: auto; }
+.price-chart { width: 100%; height: auto; display: block; }
+.price-chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-axis { stroke: var(--line); stroke-width: 1; }
+.chart-label { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-target-label {
+  fill: var(--muted);
+  font-size: 10.5px;
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.chart-hit { fill: transparent; pointer-events: all; cursor: pointer; }
+.chart-cursor { fill: var(--accent); stroke: var(--panel); stroke-width: 1.5; }
+
+.chart-tip {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.28rem 0.5rem;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.chart-tip strong { display: block; font-variant-numeric: tabular-nums; }
+.chart-tip span { color: var(--muted); font-size: 0.72rem; }
+
+.table-wrap { overflow-x: auto; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.table th, .table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--line); }
+.table tr:last-child td { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.text-danger { color: var(--danger); }
+.plain-list { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.35rem; }
+
+/* --- form layout ---------------------------------------------------------- */
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0 1rem;
+}
+
+.field-label { font-size: 0.88rem; font-weight: 600; }
+.radio-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.radio { display: flex; align-items: center; gap: 0.4rem; font-weight: 400; }
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.push-right { margin-left: auto; }
+.hint { margin: -0.4rem 0 0.9rem; }
+
+@media (max-width: 40rem) {
+  .flight-card {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "route price"
+      "spark spark"
+      "meta meta";
+  }
+}

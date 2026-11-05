@@ -1,0 +1,12 @@
+{% macro sparkline(values, width=120, height=32) %}
+  {% set points = values|spark_points(width, height) %}
+  {% if points %}
+    <svg class="spark" viewBox="0 0 {{ width }} {{ height }}" width="{{ width }}"
+         height="{{ height }}" role="img" aria-label="Recent price trend">
+      <polyline points="{{ points }}" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+    </svg>
+  {% else %}
+    <span class="muted small">no history yet</span>
+  {% endif %}
+{% endmacro %}

@@ -9,14 +9,19 @@
     <div>
       <h1>
         {{ flight.origin_iata }} <span class="arrow">→</span> {{ flight.dest_iata }}
-        {% if flight.airline %}<span class="airline">{{ flight.airline }}</span>{% endif %}
+        <span class="airline" title="Searching {{ flight.airline_filter|airlines }}">{{ flight|carrier }}</span>
+        {% if flight.is_auto_relaxed %}<span class="badge badge-warning" title="Stops were relaxed automatically; edit the flight to reset them.">connections</span>{% endif %}
         {% if not flight.is_active %}<span class="badge">paused</span>{% endif %}
       </h1>
       <p class="muted small">
         {{ flight.depart_date|localdate }}{% if flight.return_date %} to {{ flight.return_date|localdate }}{% endif %}
         · {{ flight.cabin|cabin }} · {{ flight.adults }} adult{{ '' if flight.adults == 1 else 's' }}
-        · checked every {{ flight.check_interval_hours }} hours
+        · {{ flight.max_stops|stops }}
+        · {{ 'checked daily' if flight.check_interval_hours == 24 else 'checked every ' ~ flight.check_interval_hours ~ ' hours' }}
       </p>
+      {% if flight.airline_filter %}
+        <p class="muted small">Searching {{ flight.airline_filter|airlines }}.</p>
+      {% endif %}
     </div>
     <div class="actions">
       <a class="button button-quiet" href="{{ url_for('trackers.edit', flight_id=flight.id) }}">Edit</a>
@@ -30,6 +35,14 @@
     </div>
   </div>
 
+  {% if flight.is_auto_relaxed %}
+    <div class="notice notice-warning">
+      <strong>Stops were relaxed automatically.</strong>
+      This tracker now allows {{ flight.max_stops|stops|lower }} instead of
+      {{ flight.stops_auto_relaxed_from|stops|lower }}. Edit the flight to reset its stops.
+    </div>
+  {% endif %}
+
   <section class="panel price-panel">
     <div>
       <span class="price big{% if flight.last_price_cents is none %} muted{% endif %}">
@@ -42,6 +55,7 @@
           not checked yet
         {% endif %}
       </p>
+      <p class="muted small next-check">{{ flight|next_check }}</p>
     </div>
     <div class="price-side">
       {% if flight.target_price_cents %}
@@ -118,7 +132,7 @@
       <div class="table-wrap">
         <table class="table">
           <thead>
-            <tr><th>When</th><th class="num">Price</th><th>Result</th></tr>
+            <tr><th>When</th><th class="num">Price</th><th>Airline</th><th>Result</th></tr>
           </thead>
           <tbody>
             {% for check in checks %}
@@ -127,6 +141,7 @@
                 <td class="num">
                   {% if check.ok %}{{ check.price_cents|money(check.currency or flight.currency) }}{% else %}—{% endif %}
                 </td>
+                <td>{% if check.ok %}{{ check.airline or '—' }}{% else %}—{% endif %}</td>
                 <td>
                   {% if check.ok %}
                     <span class="muted">{{ check.provider }}</span>

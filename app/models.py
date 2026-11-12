@@ -173,6 +173,11 @@ class TrackedFlight(TimestampMixin, Base):
             "cabin IN ('economy', 'premium_economy', 'business', 'first')", name="cabin_valid"
         ),
         CheckConstraint("mode IN ('target', 'any_drop')", name="mode_valid"),
+        CheckConstraint("max_stops IS NULL OR max_stops IN (0, 1)", name="max_stops_valid"),
+        CheckConstraint(
+            "stops_auto_relaxed_from IS NULL OR stops_auto_relaxed_from IN (0, 1)",
+            name="relaxed_from_valid",
+        ),
         # The checker's query: active trackers whose last check is oldest.
         Index("ix_tracked_flights_due", "is_active", "last_checked_at"),
         Index("ix_tracked_flights_user", "user_id", "is_active"),
@@ -183,23 +188,35 @@ class TrackedFlight(TimestampMixin, Base):
 
     origin_iata: Mapped[str] = mapped_column(String(3), nullable=False)
     dest_iata: Mapped[str] = mapped_column(String(3), nullable=False)
+    # Legacy free-text label. New trackers use airline_filter instead.
     airline: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Comma-separated IATA codes. NULL means any airline.
+    airline_filter: Mapped[str | None] = mapped_column(String(160), nullable=True)
     depart_date: Mapped[date] = mapped_column(Date, nullable=False)
     return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cabin: Mapped[str] = mapped_column(String(16), default="economy", nullable=False)
     adults: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="GBP", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+
+    # Stops are a ceiling: 0 is non-stop, 1 is one stop or fewer, NULL is any.
+    # The form supplies the 0 default; explicitly setting NULL must stay NULL.
+    max_stops: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stops_auto_relaxed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    stops_auto_relaxed_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     flight_number: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
     # NULL means "adopt the first price we see as the target" (see M6).
     target_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mode: Mapped[str] = mapped_column(String(16), default="target", nullable=False)
-    check_interval_hours: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
+    check_interval_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Denormalised so the dashboard is one query.
     last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     last_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The carrier that won the latest successful check, not the filter.
+    last_airline: Mapped[str | None] = mapped_column(String(120), nullable=True)
     lowest_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_alert_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     last_alert_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -226,6 +243,10 @@ class TrackedFlight(TimestampMixin, Base):
             and self.last_price_cents is not None
             and self.last_price_cents <= self.target_price_cents
         )
+
+    @property
+    def is_auto_relaxed(self) -> bool:
+        return self.stops_auto_relaxed_at is not None
 
     @property
     def target_gap_cents(self) -> int | None:
@@ -270,6 +291,7 @@ class PriceCheck(Base):
     price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    airline: Mapped[str | None] = mapped_column(String(120), nullable=True)
     error: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     tracked_flight: Mapped[TrackedFlight] = relationship(back_populates="price_checks")

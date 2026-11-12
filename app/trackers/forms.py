@@ -11,31 +11,34 @@ from wtforms import (
     IntegerField,
     RadioField,
     SelectField,
+    SelectMultipleField,
     StringField,
     SubmitField,
 )
 from wtforms.validators import (
     DataRequired,
     InputRequired,
-    Length,
     NumberRange,
     Optional,
     Regexp,
     ValidationError,
 )
 
-from ..labels import CABIN_CHOICES, CURRENCY_CHOICES, INTERVAL_CHOICES, MODE_CHOICES
+from ..labels import (
+    AIRLINE_CHOICES,
+    CABIN_CHOICES,
+    CURRENCY_CHOICES,
+    INTERVAL_CHOICES,
+    MODE_CHOICES,
+    STOPS_CHOICES,
+)
 from ..models import utcnow
 
-IATA_MESSAGE = "Use a three-letter airport code, like LHR."
+IATA_MESSAGE = "Use a three-letter airport code, like PDX."
 
 
 def _airport_code(value):
     return value.strip().upper() if isinstance(value, str) else value
-
-
-def _text(value):
-    return value.strip() if isinstance(value, str) else value
 
 
 class FlightForm(FlaskForm):
@@ -55,12 +58,20 @@ class FlightForm(FlaskForm):
             Regexp(r"^[A-Z]{3}$", message=IATA_MESSAGE),
         ],
     )
+    airlines = SelectMultipleField(
+        "Airlines",
+        choices=AIRLINE_CHOICES,
+        coerce=str,
+        description="Leave all unchecked to search every airline.",
+        render_kw={"size": 8},
+    )
     depart_date = DateField("Departing", validators=[DataRequired("Pick a departure date.")])
     return_date = DateField("Returning (optional)", validators=[Optional()])
-    airline = StringField(
-        "Airline (optional)",
-        filters=[_text],
-        validators=[Optional(), Length(min=2, max=80, message="Use between 2 and 80 characters.")],
+    max_stops = SelectField(
+        "Stops",
+        choices=STOPS_CHOICES,
+        default="0",
+        description="0 is non-stop, 1 is one stop or fewer, blank is any.",
     )
     cabin = SelectField("Cabin", choices=CABIN_CHOICES, default="economy")
     adults = IntegerField(
@@ -71,7 +82,7 @@ class FlightForm(FlaskForm):
             NumberRange(min=1, max=9, message="Between 1 and 9 adults."),
         ],
     )
-    currency = SelectField("Currency", choices=CURRENCY_CHOICES, default="GBP")
+    currency = SelectField("Currency", choices=CURRENCY_CHOICES, default="USD")
     mode = RadioField("Alert me", choices=MODE_CHOICES, default="target")
     target = DecimalField(
         "Target price",
@@ -85,7 +96,7 @@ class FlightForm(FlaskForm):
             ),
         ],
     )
-    check_interval_hours = SelectField("Check frequency", choices=INTERVAL_CHOICES, default="12")
+    check_interval_hours = SelectField("Check frequency", choices=INTERVAL_CHOICES, default="24")
     submit = SubmitField("Save flight")
 
     def validate_dest_iata(self, field):

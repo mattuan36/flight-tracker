@@ -18,39 +18,59 @@ from .models import Alert, PriceCheck, TrackedFlight, User, utcnow
 DEMO_SEED = 20261103
 CHECKS_PER_DAY = 2
 
-# origin, destination, dates, cabin, target, price at the start of recorded
-# history, price now. Flight one has already dropped through its target, so the
-# dashboard shows an alert; flight two is still waiting.
+# Southwest domestic examples, all in USD and on a daily cadence. Flight one has
+# dropped through its target, flight two is still waiting, flight three shows an
+# auto-relaxed stops ceiling, and flight four is paused to exercise that state.
 DEMO_FLIGHTS: list[dict[str, Any]] = [
     {
-        "origin_iata": "LHR",
-        "dest_iata": "JFK",
-        "airline": "British Airways",
-        "depart": date(2027, 3, 14),
-        "return_": date(2027, 3, 21),
-        "target_cents": 42000,
-        "start_cents": 68500,
-        "end_cents": 38900,
-    },
-    {
-        "origin_iata": "LGW",
-        "dest_iata": "BCN",
-        "airline": "easyJet",
-        "depart": date(2027, 6, 2),
+        "origin_iata": "DEN",
+        "dest_iata": "LAS",
+        "airline_code": "WN",
+        "airline_name": "Southwest",
+        "depart": date(2027, 2, 12),
         "return_": None,
-        "target_cents": 9500,
-        "start_cents": 7400,
-        "end_cents": 11200,
+        "target_cents": 12000,
+        "start_cents": 14000,
+        "end_cents": 10900,
+        "max_stops": 0,
     },
     {
-        "origin_iata": "MAN",
-        "dest_iata": "AYT",
-        "airline": "Jet2",
-        "depart": date(2027, 7, 19),
-        "return_": date(2027, 8, 2),
+        "origin_iata": "DAL",
+        "dest_iata": "HOU",
+        "airline_code": "WN",
+        "airline_name": "Southwest",
+        "depart": date(2027, 3, 5),
+        "return_": date(2027, 3, 9),
+        "target_cents": 8000,
+        "start_cents": 9500,
+        "end_cents": 7200,
+        "max_stops": 0,
+    },
+    {
+        "origin_iata": "MDW",
+        "dest_iata": "MCO",
+        "airline_code": "WN",
+        "airline_name": "Southwest",
+        "depart": date(2027, 4, 16),
+        "return_": date(2027, 4, 23),
         "target_cents": None,
-        "start_cents": 31000,
-        "end_cents": 27400,
+        "start_cents": 21000,
+        "end_cents": 18900,
+        "max_stops": None,
+        "relaxed_from": 0,
+    },
+    {
+        "origin_iata": "PDX",
+        "dest_iata": "SJC",
+        "airline_code": "WN",
+        "airline_name": "Southwest",
+        "depart": date(2027, 5, 20),
+        "return_": None,
+        "target_cents": 15000,
+        "start_cents": 18000,
+        "end_cents": 17000,
+        "max_stops": 1,
+        "is_active": False,
     },
 ]
 
@@ -117,17 +137,21 @@ def seed_demo(
             user=user,
             origin_iata=spec["origin_iata"],
             dest_iata=spec["dest_iata"],
-            airline=spec.get("airline"),
+            airline_filter=spec.get("airline_code", "WN"),
             depart_date=spec["depart"],
             return_date=spec["return_"],
             cabin="economy",
             adults=1,
-            currency="GBP",
+            currency="USD",
+            max_stops=spec.get("max_stops", 0),
             target_price_cents=spec["target_cents"],
             mode="target",
-            check_interval_hours=12,
-            is_active=True,
+            check_interval_hours=24,
+            is_active=spec.get("is_active", True),
         )
+        if spec.get("relaxed_from") is not None:
+            flight.stops_auto_relaxed_from = spec["relaxed_from"]
+            flight.stops_auto_relaxed_at = now - timedelta(days=2)
         db.session.add(flight)
         db.session.flush()
         flights.append(flight)
@@ -143,8 +167,9 @@ def seed_demo(
                 checked_at=checked_at,
                 ok=True,
                 price_cents=price,
-                currency="GBP",
+                currency="USD",
                 provider="mock",
+                airline=spec.get("airline_name", "Southwest"),
             )
             db.session.add(check)
             created_checks += 1
@@ -156,6 +181,7 @@ def seed_demo(
 
         flight.last_checked_at = now
         flight.last_price_cents = series[-1]
+        flight.last_airline = spec.get("airline_name", "Southwest")
         flight.lowest_price_cents = lowest
 
         if first_alert is not None:

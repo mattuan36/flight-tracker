@@ -15,12 +15,14 @@ does that and writes the results to the database.
 | M1 models, Alembic migration, demo seeder | done |
 | M2 invite-only auth + admin CLI | done |
 | M3 trackers, dashboard, mock price checks | done |
-| M6 price checker + alerts | planned |
+| M4b SerpAPI adapter, stops schema, budget guard, probe CLI | done |
+| M5 live checks, auto-relax, USD daily demo data | done |
+| M6 alerts and mailer | planned |
 
 ## Requirements
 
 - Python 3.11 or newer (developed on 3.14, deployed on PythonAnywhere's 3.13)
-- No external services needed until M6
+- No external services needed for the mock path; live checks and the probe use SerpAPI
 
 ## Setup
 
@@ -101,18 +103,39 @@ flask --app wsgi check-prices                 # only flights whose interval is d
 flask --app wsgi check-prices --all           # ignore the interval
 flask --app wsgi check-prices --email you@example.com
 flask --app wsgi check-prices --flight 7      # one tracker, by id
+
+# Live probe: prints one itinerary, writes only ApiUsage, never a PriceCheck
+flask --app wsgi probe-prices --route PDX-OAK --max-stops 0
+flask --app wsgi probe-prices --route PDX-MDW --depart 2027-01-08 --return 2027-01-15
+flask --app wsgi probe-prices --route PDX-OAK --airline AS --airline WN
 ```
 
 Web requests never call a fare provider: the dashboard only reads the database.
-`check-prices` is the piece that fetches and records quotes; M6 moves the same
-service into the hourly scheduled task and adds the email. Until the vendor is
-chosen (M4b), `PRICE_PROVIDER=mock` returns a deliberately fake, deterministic
-random walk.
+`check-prices` fetches and records quotes. Set `PRICE_PROVIDER=serpapi` and a
+`SERPAPI_KEY` for live checks; `mock` remains the free local default. The check
+service reserves one search for a one-way and two for a return before calling the
+provider. It stops at the hard monthly cap and at `CHECK_MAX_CALLS_PER_RUN`, and
+reports skipped trackers instead of exceeding the budget.
+
+The form defaults to non-stop, USD and a daily check. It also has a per-tracker
+airline filter: choose one or more IATA codes, or leave the list empty to search
+every carrier. All selected airlines go into one SerpAPI request, so an extra
+airline does not cost another search. The winning carrier is read from the chosen
+itinerary and shown on the dashboard and detail page; a mixed-carrier trip is
+labelled as such.
+
+Stops are a ceiling: `0` is non-stop, `1` is one stop or fewer, and blank is any
+number of stops. A clean no-fare answer for `0` or `1` relaxes the tracker to any
+number of stops, records the failed check, and shows the warning until the flight
+is edited. There is no second provider call in the relaxing run; the next
+scheduled check uses the relaxed setting. Provider failures and timeouts do not
+relax anything.
 
 Adding, editing, pausing, resuming and deleting all live under `/flights`. Every
 page is scoped to the signed-in account, and another account's tracker answers
-404 rather than 403 so ids cannot be probed. The airline is an optional label
-shown after the route; fares stay keyed on the airports and dates.
+404 rather than 403 so ids cannot be probed. The old free-text `airline` column
+is kept only for existing data; new trackers use `airline_filter` and
+`last_airline`.
 
 ## Tests and linting
 
@@ -141,8 +164,8 @@ alembic downgrade base                          # drop everything
 |---|---|
 | `users` | accounts, role, password hash, `session_version` for logging out every device |
 | `invites` | one-time signup tokens (stored as a hash) |
-| `tracked_flights` | route, airline label, dates, target price, last known price |
-| `price_checks` | append-only observation history, including failures |
+| `tracked_flights` | route, airline filter, last winning carrier, dates, stops ceiling, target price, last known price |
+| `price_checks` | append-only observation history, including failures and the winning carrier |
 | `alerts` | one row per email we decided to send, with an idempotency key |
 | `api_usage` | per-provider daily call counter for the budget guard |
 | `password_resets` | single-use reset tokens (hashed), 60-minute expiry |
@@ -163,10 +186,11 @@ on PythonAnywhere is the moment to confirm it.
 flask --app wsgi seed-demo --email you@example.com --password "..." [--reset]
 ```
 
-Creates (or reuses) an admin account, three tracked flights with airlines, ~270
-price checks over 45 days and sent alerts, all from a fixed random seed.
-`--reset` wipes that user's tracked flights first. It refuses to run when
-`APP_ENV=prod` without `--force`.
+Creates (or reuses) an admin account, four Southwest domestic trackers in USD,
+~360 price checks over 45 days and sent alerts, all from a fixed random seed. One
+tracker is auto-relaxed and one is paused, so both warning and next-check states
+appear in the dashboard demo. `--reset` wipes that user's tracked flights first.
+It refuses to run when `APP_ENV=prod` without `--force`.
 
 ## Configuration
 
@@ -181,7 +205,13 @@ price checks over 45 days and sent alerts, all from a fixed random seed.
 | `BASE_URL` | `http://localhost:5000` | Must be the public https URL in prod |
 | `DATABASE_URL` | blank → `instance/dev.sqlite3` | `mysql://` is rewritten to `mysql+pymysql://` |
 | `SECRET_KEY` | dev-only fallback | Required in prod |
-| `PRICE_PROVIDER` | `mock` | Real vendor wired in after the M4b spike |
+| `PRICE_PROVIDER` | `mock` | `mock` or `serpapi`; live checks need `SERPAPI_KEY` |
+| `SERPAPI_KEY` | blank | From serpapi.com; never printed or used by a web request |
+| `SERPAPI_GL` / `SERPAPI_HL` | `us` / `en` | Google Flights market and language |
+| `SERPAPI_MONTHLY_CAP` | `250` | Hard-capped at 250 in code; no paid overage |
+| `SERPAPI_TIMEOUT_SECONDS` | `20` | One retry on timeout/5xx, never on 4xx |
+| `CHECK_TASK_MINUTE` | `0` | The hourly task's minute, used for next-check wording |
+| `CHECK_MAX_CALLS_PER_RUN` | `20` | Stays below SerpAPI's 50/hour limit |
 | `ADMIN_EMAIL` | blank | Shown in "ask for a new invite" messages |
 | `INVITE_TTL_DAYS` | `7` | Invite lifetime, printed by `flask invite` |
 | `RESET_TTL_MINUTES` | `60` | Reset link lifetime |

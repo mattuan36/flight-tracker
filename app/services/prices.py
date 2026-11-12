@@ -1,9 +1,10 @@
 """Fare providers behind a small adapter.
 
-There is exactly one implementation, :class:`MockProvider`, and it is
-deliberately fake. The real vendor is chosen in the M4b spike; the rest of the
-app only knows the ``fetch(flight) -> Quote`` shape. Web requests never call a
-provider — the scheduled check (M6) and ``flask check-prices`` do.
+``MockProvider`` is the safe default for development and tests. ``SerpApiProvider``
+is the live adapter and is imported lazily so the mock path never needs the HTTP
+dependency. The rest of the app only knows the ``fetch(flight) -> Quote`` shape.
+Web requests never call a provider — the scheduled check and ``flask
+check-prices`` do.
 """
 
 from __future__ import annotations
@@ -21,11 +22,20 @@ class ProviderError(Exception):
     """A provider could not produce a quote. The message ends up in the check log."""
 
 
+class NoMatchingFare(ProviderError):
+    """The provider answered, but nothing matched the route or stops filter.
+
+    M5 uses this specific result for auto-relaxation; a timeout or malformed
+    response is a normal failure and must not relax anything.
+    """
+
+
 @dataclass(frozen=True)
 class Quote:
     price_cents: int
     currency: str
     provider: str
+    airline: str | None = None
 
 
 class PriceProvider(Protocol):
@@ -82,14 +92,20 @@ class MockProvider:
 
 
 _PROVIDERS: dict[str, type[MockProvider]] = {"mock": MockProvider}
+KNOWN_PROVIDERS = ("mock", "serpapi")
 
 
 def get_provider(name: str | None = None) -> PriceProvider:
     key = (name or current_app.config["PRICE_PROVIDER"]).strip().lower()
+    if key == "serpapi":
+        from .serpapi import SerpApiProvider
+
+        return SerpApiProvider()
     try:
         provider_class = _PROVIDERS[key]
     except KeyError:
         raise RuntimeError(
-            f"unknown price provider {key!r}; set PRICE_PROVIDER to one of {sorted(_PROVIDERS)}"
+            f"unknown price provider {key!r}; set PRICE_PROVIDER to one of "
+            f"{sorted(KNOWN_PROVIDERS)}"
         ) from None
     return provider_class()

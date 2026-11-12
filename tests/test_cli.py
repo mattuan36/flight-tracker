@@ -21,6 +21,16 @@ def test_config_masks_database_password(app):
     assert "hunter2" not in result.output
 
 
+def test_config_masks_the_serpapi_key(app):
+    app.config["SERPAPI_KEY"] = "serpapi-super-secret-value"
+
+    result = app.test_cli_runner().invoke(args=["config"])
+
+    assert result.exit_code == 0
+    assert "SERPAPI_KEY" in result.output
+    assert "serpapi-super-secret-value" not in result.output
+
+
 def test_health_command_succeeds(app):
     result = app.test_cli_runner().invoke(args=["health"])
 

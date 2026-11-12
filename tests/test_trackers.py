@@ -9,9 +9,10 @@ import pytest
 from sqlalchemy import select
 
 from app.extensions import db
-from app.models import PriceCheck, TrackedFlight, User, utcnow
+from app.models import ApiUsage, PriceCheck, TrackedFlight, User, utcnow
 from app.money import format_cents, to_cents
 from app.templating import shortdates, spark_points
+from app.trackers.forms import FlightForm
 
 PASSWORD = "a-long-enough-password"
 
@@ -60,7 +61,7 @@ def payload(**overrides) -> dict[str, str]:
         "dest_iata": "JFK",
         "depart_date": (utcnow().date() + timedelta(days=90)).isoformat(),
         "return_date": "",
-        "airline": "",
+        "max_stops": "0",
         "cabin": "economy",
         "adults": "1",
         "currency": "GBP",
@@ -152,27 +153,115 @@ def test_adding_a_flight_converts_the_target_to_cents(client):
     assert flight.mode == "target"
 
 
-def test_airline_is_stored_and_shown_after_the_route(client):
+def test_new_flight_defaults_to_usd_daily_and_nonstop(app):
+    form = FlightForm()
+
+    assert form.currency.default == "USD"
+    assert form.check_interval_hours.default == "24"
+    assert form.max_stops.default == "0"
+
+
+def test_stops_scope_is_stored_and_shown(client):
     make_user()
     sign_in(client)
 
-    client.post("/flights/new", data=payload(airline="British Airways"))
+    client.post("/flights/new", data=payload(max_stops="1"))
 
     flight = db.session.scalar(select(TrackedFlight))
-    assert flight.airline == "British Airways"
-    dashboard = client.get("/").data
-    detail = client.get(f"/flights/{flight.id}").data
-    assert b'<span class="airline">British Airways</span>' in dashboard
-    assert b'<span class="airline">British Airways</span>' in detail
+    assert flight.max_stops == 1
+    assert b"1 stop or fewer" in client.get(f"/flights/{flight.id}").data
+
+    client.post(f"/flights/{flight.id}/edit", data=payload(max_stops=""))
+
+    db.session.refresh(flight)
+    assert flight.max_stops is None
+    assert b"Any number of stops" in client.get(f"/flights/{flight.id}").data
 
 
-def test_airline_is_optional(client):
+def test_new_flight_can_explicitly_choose_any_stops(client):
     make_user()
     sign_in(client)
 
-    client.post("/flights/new", data=payload(airline="  "))
+    client.post("/flights/new", data=payload(max_stops=""))
 
-    assert db.session.scalar(select(TrackedFlight)).airline is None
+    assert db.session.scalar(select(TrackedFlight)).max_stops is None
+
+
+def test_missing_stops_field_defaults_to_nonstop(client):
+    make_user()
+    sign_in(client)
+
+    client.post(
+        "/flights/new", data={key: value for key, value in payload().items() if key != "max_stops"}
+    )
+
+    assert db.session.scalar(select(TrackedFlight)).max_stops == 0
+
+
+def test_airline_filter_saves_codes_and_renders_names(client):
+    make_user()
+    sign_in(client)
+
+    client.post("/flights/new", data=payload(airlines=["WN", "AA"]))
+
+    flight = db.session.scalar(select(TrackedFlight))
+    assert flight.airline_filter == "AA,WN"
+    dashboard = client.get("/").data
+    detail = client.get(f"/flights/{flight.id}").data
+    assert (
+        b'<span class="airline" title="Searching American / Southwest">American / Southwest</span>'
+        in dashboard
+    )
+    assert (
+        b'<span class="airline" title="Searching American / Southwest">American / Southwest</span>'
+        in detail
+    )
+
+
+def test_no_airline_selection_means_any_airline(client):
+    make_user()
+    sign_in(client)
+
+    client.post("/flights/new", data=payload())
+
+    flight = db.session.scalar(select(TrackedFlight))
+    assert flight.airline_filter is None
+    assert (
+        b'<span class="airline" title="Searching Any airline">Any airline</span>'
+        in client.get("/").data
+    )
+
+
+def test_unknown_airline_code_is_rejected(client):
+    make_user()
+    sign_in(client)
+
+    response = client.post("/flights/new", data=payload(airlines=["ZZ"]))
+
+    assert response.status_code == 200
+    assert b"not a valid choice" in response.data
+    assert db.session.scalar(select(TrackedFlight)) is None
+
+
+def test_latest_winning_carrier_is_shown_before_the_filter(client):
+    user = make_user()
+    flight = make_flight(
+        user,
+        airline_filter="AA,WN",
+        last_airline="Alaska",
+        last_price_cents=38900,
+        last_checked_at=utcnow(),
+    )
+    sign_in(client)
+
+    dashboard = client.get("/").data
+    detail = client.get(f"/flights/{flight.id}").data
+
+    assert (
+        b'<span class="airline" title="Searching American / Southwest">Alaska</span>' in dashboard
+    )
+    assert b'<span class="airline" title="Searching American / Southwest">Alaska</span>' in detail
+    assert b"Searching American / Southwest" in detail
 
 
 def test_any_drop_mode_ignores_a_leftover_target(client):
@@ -303,16 +392,74 @@ def test_detail_shows_price_target_and_recent_checks(client):
     assert b"Recent checks" in body
 
 
+def test_next_check_is_shown_on_detail_and_dashboard(client):
+    user = make_user()
+    flight = make_flight(
+        user,
+        last_checked_at=utcnow(),
+        check_interval_hours=24,
+    )
+    sign_in(client)
+
+    detail = client.get(f"/flights/{flight.id}").data
+    dashboard = client.get("/").data
+
+    assert b"Next scheduled check" in detail
+    assert b"next check in about" in dashboard
+
+
+def test_budget_exhaustion_pauses_the_next_check_note(app, client, monkeypatch):
+    user = make_user()
+    flight = make_flight(user, last_checked_at=utcnow())
+    monkeypatch.setitem(app.config, "PRICE_PROVIDER", "serpapi")
+    db.session.add(ApiUsage(provider="serpapi", day=utcnow().date(), calls=250))
+    db.session.commit()
+    sign_in(client)
+
+    detail = client.get(f"/flights/{flight.id}").data
+    dashboard = client.get("/").data
+
+    assert b"Monthly SerpAPI budget used up" in detail
+    assert b"budget used up" in dashboard
+
+
+def test_auto_relax_warning_is_visible_and_editing_clears_it(client):
+    user = make_user()
+    flight = make_flight(
+        user,
+        max_stops=None,
+        stops_auto_relaxed_at=utcnow(),
+        stops_auto_relaxed_from=1,
+    )
+    sign_in(client)
+
+    detail = client.get(f"/flights/{flight.id}").data
+    dashboard = client.get("/").data
+
+    assert b"Stops were relaxed automatically" in detail
+    assert b"connections" in dashboard
+
+    client.post(f"/flights/{flight.id}/edit", data=payload(max_stops="0"))
+
+    db.session.refresh(flight)
+    assert flight.max_stops == 0
+    assert flight.stops_auto_relaxed_at is None
+    assert flight.stops_auto_relaxed_from is None
+    assert b"Stops were relaxed automatically" not in client.get(f"/flights/{flight.id}").data
+
+
 def test_edit_form_is_prefilled(client):
     user = make_user()
-    flight = make_flight(user, target_price_cents=42050, airline="British Airways")
+    flight = make_flight(user, target_price_cents=42050, max_stops=1, airline_filter="AA,WN")
     sign_in(client)
 
     body = client.get(f"/flights/{flight.id}/edit").data
 
     assert b'value="420.50"' in body
     assert b'value="LHR"' in body
-    assert b'value="British Airways"' in body
+    assert b'<option selected value="1">1 stop or fewer</option>' in body
+    assert b'<option selected value="AA">American</option>' in body
+    assert b'<option selected value="WN">Southwest</option>' in body
     assert b"Every 12 hours" in body
 
 
@@ -469,11 +616,11 @@ def test_price_state_below_above_and_watching():
 
 
 def test_money_is_formatted_from_integer_cents():
-    assert format_cents(42000) == "£420.00"
+    assert format_cents(42000) == "$420.00"
     assert format_cents(42050, "EUR") == "€420.50"
     assert format_cents(0, "USD") == "$0.00"
     assert format_cents(None) == "—"
-    assert format_cents(-3100) == "-£31.00"
+    assert format_cents(-3100) == "-$31.00"
 
 
 def test_cents_conversion_rounds_half_up():

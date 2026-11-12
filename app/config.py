@@ -87,8 +87,21 @@ def base_config() -> dict:
         "APP_NAME": os.environ.get("APP_NAME", "Flight Tracker"),
         "ADMIN_EMAIL": os.environ.get("ADMIN_EMAIL", ""),
         "BASE_URL": (os.environ.get("BASE_URL") or DEFAULT_BASE_URL).rstrip("/"),
-        # The only price source wired up until M4b picks a real vendor.
+        # ``mock`` is the safe default. Set ``serpapi`` for live checks; the
+        # budget guard is applied in the check service, not in a web request.
         "PRICE_PROVIDER": os.environ.get("PRICE_PROVIDER", "mock"),
+        # SerpAPI is priced in USD. The key is only used by the CLI/scheduler,
+        # never by a web request. Airline scope lives on each tracker.
+        "SERPAPI_KEY": os.environ.get("SERPAPI_KEY", ""),
+        "SERPAPI_BASE_URL": os.environ.get("SERPAPI_BASE_URL", "https://serpapi.com/search.json"),
+        "SERPAPI_GL": os.environ.get("SERPAPI_GL", "us"),
+        "SERPAPI_HL": os.environ.get("SERPAPI_HL", "en"),
+        "SERPAPI_MONTHLY_CAP": int(os.environ.get("SERPAPI_MONTHLY_CAP", "250")),
+        "SERPAPI_TIMEOUT_SECONDS": int(os.environ.get("SERPAPI_TIMEOUT_SECONDS", "20")),
+        # The hourly task only checks flights whose interval is due. Daily is
+        # the default, so a flight is checked once per day, not at a fixed time.
+        "CHECK_TASK_MINUTE": int(os.environ.get("CHECK_TASK_MINUTE", "0")),
+        "CHECK_MAX_CALLS_PER_RUN": int(os.environ.get("CHECK_MAX_CALLS_PER_RUN", "20")),
         "SECRET_KEY": secret_key,
         "DATABASE_URL": database_url,
         "SQLALCHEMY_DATABASE_URI": database_url or _dev_database_uri(),
@@ -139,6 +152,8 @@ def test_config() -> dict:
         {
             "ENV_NAME": "test",
             "TESTING": True,
+            "PRICE_PROVIDER": "mock",
+            "SERPAPI_KEY": "",
             "SECRET_KEY": "test-secret",
             "SQLALCHEMY_DATABASE_URI": "sqlite://",
             "SQLALCHEMY_ENGINE_OPTIONS": {

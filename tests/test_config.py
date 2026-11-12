@@ -61,3 +61,15 @@ def test_dev_defaults_to_mock_provider_and_sqlite(monkeypatch):
     app = create_app("dev")
     assert app.config["PRICE_PROVIDER"] == "mock"
     assert app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:///")
+
+
+def test_serpapi_defaults_are_market_and_budget_settings(monkeypatch):
+    monkeypatch.delenv("SERPAPI_AIRLINE", raising=False)
+    monkeypatch.delenv("SERPAPI_MONTHLY_CAP", raising=False)
+
+    app = create_app("dev")
+
+    assert "SERPAPI_AIRLINE" not in app.config
+    assert app.config["SERPAPI_GL"] == "us"
+    assert app.config["SERPAPI_HL"] == "en"
+    assert app.config["SERPAPI_MONTHLY_CAP"] == 250

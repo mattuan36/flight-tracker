@@ -11,7 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from .labels import CURRENCY_SYMBOLS
 
 
-def format_cents(cents: int | None, currency: str = "GBP") -> str:
+def format_cents(cents: int | None, currency: str = "USD") -> str:
     if cents is None:
         return "—"
     symbol = CURRENCY_SYMBOLS.get(currency, "")

@@ -20,6 +20,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from ..extensions import db
+from ..labels import split_airline_filter
 from ..models import TrackedFlight
 from ..money import to_cents
 from ..templating import localdt
@@ -35,15 +36,26 @@ def _owned_flight(flight_id: int) -> TrackedFlight:
     return flight
 
 
+def _max_stops(value) -> int | None:
+    """Map the select's values to the column: blank means any number of stops."""
+    if value in (None, 0, "0"):
+        return 0
+    if value in ("", "any", "None"):
+        return None
+    return int(value)
+
+
 def _apply(form: FlightForm, flight: TrackedFlight) -> None:
     flight.origin_iata = form.origin_iata.data
     flight.dest_iata = form.dest_iata.data
     flight.depart_date = form.depart_date.data
     flight.return_date = form.return_date.data or None
-    flight.airline = form.airline.data or None
+    codes = sorted(set(form.airlines.data or []))
+    flight.airline_filter = ",".join(codes) or None
     flight.cabin = form.cabin.data
     flight.adults = int(form.adults.data)
     flight.currency = form.currency.data
+    flight.max_stops = _max_stops(form.max_stops.data)
     flight.mode = form.mode.data
     flight.check_interval_hours = int(form.check_interval_hours.data)
     flight.target_price_cents = (
@@ -51,6 +63,9 @@ def _apply(form: FlightForm, flight: TrackedFlight) -> None:
         if form.mode.data == "target" and form.target.data is not None
         else None
     )
+    # Editing the flight is the user's answer to any earlier auto-relaxation.
+    flight.stops_auto_relaxed_at = None
+    flight.stops_auto_relaxed_from = None
 
 
 @trackers_bp.route("/new", methods=["GET", "POST"])
@@ -63,7 +78,7 @@ def new():
         db.session.add(flight)
         db.session.commit()
         flash(
-            f"Tracking {flight.route}. The first fare arrives with the next price check.",
+            f"Tracking {flight.route}. The first fare arrives with the next scheduled check.",
             "success",
         )
         return redirect(url_for("trackers.detail", flight_id=flight.id))
@@ -102,9 +117,10 @@ def edit(flight_id: int):
             data={
                 "origin_iata": flight.origin_iata,
                 "dest_iata": flight.dest_iata,
+                "airlines": split_airline_filter(flight.airline_filter),
                 "depart_date": flight.depart_date,
                 "return_date": flight.return_date,
-                "airline": flight.airline or "",
+                "max_stops": "" if flight.max_stops is None else str(flight.max_stops),
                 "cabin": flight.cabin,
                 "adults": flight.adults,
                 "currency": flight.currency,

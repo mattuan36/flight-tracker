@@ -13,7 +13,7 @@ def test_seed_creates_user_flights_and_history(app):
     result = seed_demo("demo@example.com", "demo-password-123")
 
     assert result["created_user"] is True
-    assert result["created_flights"] == 3
+    assert result["created_flights"] == 4
     assert result["created_checks"] > 0
     assert result["created_alerts"] >= 1
     assert result["user"].role == "admin"
@@ -25,7 +25,7 @@ def test_seed_records_a_price_history_that_moves(app):
     seed_demo("demo@example.com", "demo-password-123")
 
     flight = db.session.scalars(
-        select(TrackedFlight).where(TrackedFlight.origin_iata == "LHR")
+        select(TrackedFlight).where(TrackedFlight.origin_iata == "DEN")
     ).one()
     prices = db.session.scalars(
         select(PriceCheck.price_cents)
@@ -37,6 +37,26 @@ def test_seed_records_a_price_history_that_moves(app):
     assert prices[0] != prices[-1]
     assert flight.last_price_cents == prices[-1]
     assert flight.lowest_price_cents == min(prices)
+    assert flight.currency == "USD"
+    assert flight.airline_filter == "WN"
+    assert flight.check_interval_hours == 24
+    assert flight.last_airline == "Southwest"
+
+
+def test_seed_shows_relaxed_and_paused_states(app):
+    seed_demo("demo@example.com", "demo-password-123")
+
+    relaxed = db.session.scalars(
+        select(TrackedFlight).where(TrackedFlight.origin_iata == "MDW")
+    ).one()
+    paused = db.session.scalars(
+        select(TrackedFlight).where(TrackedFlight.origin_iata == "PDX")
+    ).one()
+
+    assert relaxed.max_stops is None
+    assert relaxed.stops_auto_relaxed_from == 0
+    assert relaxed.stops_auto_relaxed_at is not None
+    assert paused.is_active is False
 
 
 def test_seed_is_idempotent(app):
@@ -48,7 +68,7 @@ def test_seed_is_idempotent(app):
     assert second["skipped"]
 
     assert db.session.scalar(select(func.count()).select_from(User)) == 1
-    assert db.session.scalar(select(func.count()).select_from(TrackedFlight)) == 3
+    assert db.session.scalar(select(func.count()).select_from(TrackedFlight)) == 4
 
 
 def test_seed_reset_rebuilds_history(app):
@@ -95,5 +115,5 @@ def test_cli_seed_prints_a_summary(app):
     )
 
     assert result.exit_code == 0
-    assert "3 tracked flights" in result.output
+    assert "4 tracked flights" in result.output
     assert "demo@example.com" in result.output

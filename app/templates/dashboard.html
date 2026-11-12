@@ -20,7 +20,7 @@
 
   {% if not flights %}
     <section class="panel empty">
-      <p>Add a route and the price you would actually pay. The checker records fares a few times a day and emails you when one falls below your number.</p>
+      <p>Add a route, choose the airlines you want, and set the price you would actually pay. The checker records fares once a day and emails you when one falls below your number.</p>
       <p><a class="button" href="{{ url_for('trackers.new') }}">Add your first flight</a></p>
     </section>
   {% else %}
@@ -32,11 +32,13 @@
               <a href="{{ url_for('trackers.detail', flight_id=flight.id) }}">
                 {{ flight.origin_iata }} <span class="arrow">→</span> {{ flight.dest_iata }}
               </a>
-              {% if flight.airline %}<span class="airline">{{ flight.airline }}</span>{% endif %}
+              <span class="airline" title="Searching {{ flight.airline_filter|airlines }}">{{ flight|carrier }}</span>
+              {% if flight.is_auto_relaxed %}<span class="badge badge-warning" title="Stops were relaxed automatically; edit the flight to reset them.">connections</span>{% endif %}
             </h2>
             <p class="muted small">
               {{ flight.depart_date|shortdates(flight.return_date) }}
               · {{ flight.cabin|cabin }}{% if flight.adults > 1 %} · {{ flight.adults }} adults{% endif %}
+              · {{ flight.max_stops|stops }}
             </p>
           </div>
 
@@ -64,7 +66,7 @@
           <p class="flight-meta muted small">
             {% if flight.target_price_cents %}target {{ flight.target_price_cents|money(flight.currency) }} · {% endif %}
             {% if flight.lowest_price_cents %}lowest {{ flight.lowest_price_cents|money(flight.currency) }} · {% endif %}
-            checked {{ flight.last_checked_at|ago }}
+            checked {{ flight.last_checked_at|ago }} · {{ flight|next_check_short }}
           </p>
         </li>
       {% endfor %}

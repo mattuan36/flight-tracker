@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from flask import current_app
+
 from ..extensions import db
 from ..models import PriceCheck, TrackedFlight, utcnow
-from .prices import PriceProvider, ProviderError, get_provider
+from . import budget
+from .prices import NoMatchingFare, PriceProvider, ProviderError, get_provider
 
 
 def is_due(flight: TrackedFlight, now: datetime | None = None) -> bool:
@@ -19,6 +22,32 @@ def is_due(flight: TrackedFlight, now: datetime | None = None) -> bool:
     if flight.last_checked_at is None:
         return True
     return flight.last_checked_at + timedelta(hours=flight.check_interval_hours) <= now
+
+
+def next_check_at(flight: TrackedFlight, now: datetime | None = None) -> datetime | None:
+    """When the hourly task will next consider this flight.
+
+    The task runs once an hour at ``CHECK_TASK_MINUTE``. A daily interval means
+    "at least 24 hours since the last attempt", not a fixed clock time, so the
+    answer is the first task run at or after that due moment.
+    """
+    now = now or utcnow()
+    if not flight.is_active or flight.depart_date < now.date():
+        return None
+
+    due = (
+        now
+        if flight.last_checked_at is None
+        else flight.last_checked_at + timedelta(hours=flight.check_interval_hours)
+    )
+    if due < now:
+        due = now
+
+    minute = int(current_app.config.get("CHECK_TASK_MINUTE", 0)) % 60
+    run = due.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
+    if run < due:
+        run += timedelta(hours=1)
+    return run
 
 
 def check_flight(
@@ -31,11 +60,31 @@ def check_flight(
 
     A failed check still moves ``last_checked_at``: otherwise a broken provider
     would be retried by every run instead of waiting out the interval.
+
+    A clean no-fare response is different from a transport failure. For a tracker
+    with a stops ceiling, it is the signal to widen the next search to any number
+    of stops. The widening happens now, but the provider is called exactly once:
+    the next scheduled run uses the relaxed setting.
     """
     now = now or utcnow()
 
     try:
         quote = provider.fetch(flight)
+    except NoMatchingFare as exc:
+        check = PriceCheck(
+            tracked_flight_id=flight.id,
+            checked_at=now,
+            ok=False,
+            provider=provider.name,
+            error=str(exc)[:255],
+        )
+        flight.last_checked_at = now
+        if flight.max_stops in (0, 1):
+            flight.stops_auto_relaxed_from = flight.max_stops
+            flight.max_stops = None
+            flight.stops_auto_relaxed_at = now
+        db.session.add(check)
+        return check
     except ProviderError as exc:
         check = PriceCheck(
             tracked_flight_id=flight.id,
@@ -55,15 +104,25 @@ def check_flight(
         price_cents=quote.price_cents,
         currency=quote.currency,
         provider=quote.provider,
+        airline=quote.airline,
     )
     flight.last_checked_at = now
     flight.last_price_cents = quote.price_cents
+    flight.last_airline = quote.airline
     if quote.currency == flight.currency and (
         flight.lowest_price_cents is None or quote.price_cents < flight.lowest_price_cents
     ):
         flight.lowest_price_cents = quote.price_cents
     db.session.add(check)
     return check
+
+
+class RunResults(list[tuple[TrackedFlight, PriceCheck]]):
+    """Checks performed this run, plus the trackers the budget had to skip."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.skipped: list[tuple[TrackedFlight, str]] = []
 
 
 def run_checks(
@@ -73,14 +132,23 @@ def run_checks(
     user_id: int | None = None,
     flight_id: int | None = None,
     now: datetime | None = None,
-) -> list[tuple[TrackedFlight, PriceCheck]]:
-    """Check active trackers and commit, returning what happened per flight."""
+) -> RunResults:
+    """Check active, current trackers and commit what happened per flight.
+
+    SerpAPI runs reserve search credits before each provider call. The monthly
+    guard is hard, and ``CHECK_MAX_CALLS_PER_RUN`` keeps a single run below the
+    hourly vendor limit. A return is reserved as two calls. Trackers that cannot
+    be reserved are returned in ``skipped`` and are not called.
+    """
     provider = provider or get_provider()
     now = now or utcnow()
 
     query = (
         db.select(TrackedFlight)
-        .where(TrackedFlight.is_active.is_(True))
+        .where(
+            TrackedFlight.is_active.is_(True),
+            TrackedFlight.depart_date >= now.date(),
+        )
         .order_by(TrackedFlight.last_checked_at)
     )
     if user_id is not None:
@@ -92,6 +160,38 @@ def run_checks(
     if only_due:
         flights = [flight for flight in flights if is_due(flight, now)]
 
-    results = [(flight, check_flight(flight, provider, now=now)) for flight in flights]
+    uses_budget = provider.name == budget.SERPAPI_PROVIDER
+    per_run_cap = max(0, int(current_app.config.get("CHECK_MAX_CALLS_PER_RUN", 20)))
+    reserved_this_run = 0
+    results = RunResults()
+
+    for flight in flights:
+        calls = 1
+        if uses_budget:
+            estimated = getattr(provider, "estimated_calls", None)
+            calls = int(estimated(flight)) if callable(estimated) else 1
+            if reserved_this_run + calls > per_run_cap:
+                results.skipped.append((flight, "per-run call cap reached"))
+                continue
+            if not budget.reserve(provider.name, calls, day=now.date()):
+                results.skipped.append((flight, "monthly search budget reached"))
+                current_app.logger.warning(
+                    "Skipped %s: monthly SerpAPI budget reached", flight.route
+                )
+                continue
+            reserved_this_run += calls
+
+        results.append((flight, check_flight(flight, provider, now=now)))
+        # Commit each observation before the next reservation. ``reserve`` may
+        # roll back when the cap is reached, and that must not undo a check that
+        # already ran.
+        db.session.commit()
+
+    if results.skipped:
+        current_app.logger.warning(
+            "Skipped %d tracker(s) because the SerpAPI budget could not cover them",
+            len(results.skipped),
+        )
+
     db.session.commit()
     return results

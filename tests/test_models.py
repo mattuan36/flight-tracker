@@ -203,3 +203,39 @@ def test_checker_index_is_defined():
 
     assert "ix_tracked_flights_due" in index_names
     assert "ix_tracked_flights_user" in index_names
+
+
+def test_new_tracker_defaults_to_southwest_friendly_values():
+    user = make_user()
+    flight = TrackedFlight(
+        user=user,
+        origin_iata="PDX",
+        dest_iata="OAK",
+        depart_date=date(2027, 3, 14),
+        max_stops=0,
+    )
+    db.session.add(flight)
+    db.session.commit()
+
+    assert flight.currency == "USD"
+    assert flight.check_interval_hours == 24
+    assert flight.max_stops == 0
+    assert flight.stops_auto_relaxed_at is None
+    assert flight.stops_auto_relaxed_from is None
+
+
+def test_max_stops_is_limited_to_zero_or_one():
+    user = make_user()
+    db.session.add(
+        TrackedFlight(
+            user=user,
+            origin_iata="PDX",
+            dest_iata="OAK",
+            depart_date=date(2027, 3, 14),
+            max_stops=2,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()

@@ -55,6 +55,16 @@ body {
   color: var(--muted);
 }
 
+.footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.footer-meta a {
+  color: inherit;
+}
+
 .brand {
   color: var(--fg);
   text-decoration: none;

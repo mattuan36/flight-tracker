@@ -229,7 +229,14 @@ It refuses to run when `APP_ENV=prod` without `--force`.
 | Key | Default | Notes |
 |---|---|---|
 | `APP_ENV` | `dev` | `production` is accepted as an alias for `prod` |
-| `BASE_URL` | `http://localhost:5000` | Must be the public https URL in prod |
+| `BASE_URL` | `http://localhost:5000` | Must be the public https URL in prod; include the mount path |
+| `APPLICATION_ROOT` | `/` | URL prefix; production uses `/flight` |
+| `SESSION_COOKIE_NAME` | `flight_session` | Keeps the session separate from the host app |
+| `SESSION_COOKIE_PATH` | `APPLICATION_ROOT` | Blank derives the path from the mount |
+| `REMEMBER_COOKIE_NAME` | `flight_remember` | Keeps "remember me" separate too |
+| `REMEMBER_COOKIE_PATH` | `APPLICATION_ROOT` | Blank derives the path from the mount |
+| `BACK_TO_PROJECTS_URL` | `/` | Footer link to the host site or projects index |
+| `BACK_TO_PROJECTS_LABEL` | `All projects` | Footer link label |
 | `DATABASE_URL` | blank → `instance/dev.sqlite3` | `mysql://` is rewritten to `mysql+pymysql://` |
 | `SECRET_KEY` | dev-only fallback | Required in prod |
 | `PRICE_PROVIDER` | `mock` | `mock` or `serpapi`; live checks need `SERPAPI_KEY` |
@@ -257,6 +264,11 @@ It refuses to run when `APP_ENV=prod` without `--force`.
 Not wired up yet. The shape it will take:
 
 - virtualenv at `/home/<user>/.virtualenvs/flight-tracker`
+- a `DispatcherMiddleware` mount at `/flight` inside the existing
+  `web-projects` WSGI app, with `/flight/static/` mapped to this project's
+  `app/static/`
+- `APPLICATION_ROOT=/flight`, `BASE_URL=https://<user>.pythonanywhere.com/flight`,
+  and the `flight_*` cookies scoped to `/flight`
 - `git pull` + **Reload** in the Web tab
 - `.env` in the project root, read by both the WSGI app and the scheduled task
   (the WSGI file's environment is *not* inherited by tasks)
@@ -264,7 +276,7 @@ Not wired up yet. The shape it will take:
   start with the console transport there
 - scheduled task:
   `cd /home/<user>/flight-tracker && /home/<user>/.virtualenvs/flight-tracker/bin/python -m jobs.check_prices`
-- `/health` used as the post-deploy smoke check
+- `/flight/health` used as the post-deploy smoke check
 
 ## License
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -61,6 +62,14 @@ def _bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _normalize_path(value: str | None, default: str = "/") -> str:
+    """Return a leading-slash path without a trailing slash (except root)."""
+    path = (value or "").strip() or default
+    if not path.startswith("/"):
+        path = "/" + path
+    return path.rstrip("/") or "/"
+
+
 def normalize_database_url(url: str) -> str:
     """Turn the URL PythonAnywhere gives you into a SQLAlchemy URL.
 
@@ -83,11 +92,17 @@ def base_config() -> dict:
     secret_key = os.environ.get("SECRET_KEY") or None
     database_url = normalize_database_url(os.environ.get("DATABASE_URL", ""))
     admin_email = os.environ.get("ADMIN_EMAIL", "")
+    application_root = _normalize_path(os.environ.get("APPLICATION_ROOT"))
 
     return {
         "APP_NAME": os.environ.get("APP_NAME", "Flight Tracker"),
         "ADMIN_EMAIL": admin_email,
         "BASE_URL": (os.environ.get("BASE_URL") or DEFAULT_BASE_URL).rstrip("/"),
+        # The app is mounted at a path on PythonAnywhere, so its cookie scope
+        # and public URL prefix must match. Both default to local root access.
+        "APPLICATION_ROOT": application_root,
+        "BACK_TO_PROJECTS_URL": os.environ.get("BACK_TO_PROJECTS_URL") or "/",
+        "BACK_TO_PROJECTS_LABEL": os.environ.get("BACK_TO_PROJECTS_LABEL") or "All projects",
         # ``mock`` is the safe default. Set ``serpapi`` for live checks; the
         # budget guard is applied in the check service, not in a web request.
         "PRICE_PROVIDER": os.environ.get("PRICE_PROVIDER", "mock"),
@@ -130,6 +145,16 @@ def base_config() -> dict:
         "LOGIN_IP_MAX_ATTEMPTS": int(os.environ.get("LOGIN_IP_MAX_ATTEMPTS", "20")),
         "TIMEZONE_CHOICES": TIMEZONE_CHOICES,
         # Sessions: a private tool used occasionally, so long-lived and httpOnly.
+        # The names and paths keep these cookies apart from the sibling
+        # web-projects app when both are mounted under one hostname.
+        "SESSION_COOKIE_NAME": os.environ.get("SESSION_COOKIE_NAME") or "flight_session",
+        "SESSION_COOKIE_PATH": _normalize_path(
+            os.environ.get("SESSION_COOKIE_PATH"), application_root
+        ),
+        "REMEMBER_COOKIE_NAME": os.environ.get("REMEMBER_COOKIE_NAME") or "flight_remember",
+        "REMEMBER_COOKIE_PATH": _normalize_path(
+            os.environ.get("REMEMBER_COOKIE_PATH"), application_root
+        ),
         "PERMANENT_SESSION_LIFETIME": timedelta(days=30),
         "REMEMBER_COOKIE_DURATION": timedelta(days=30),
         "SESSION_COOKIE_HTTPONLY": True,
@@ -229,6 +254,13 @@ def validate(app, env_name: str) -> None:
     if app.config["BASE_URL"].startswith(DEFAULT_BASE_URL):
         raise RuntimeError(
             "BASE_URL must be the public https URL in production; invite links are built from it."
+        )
+
+    base_path = urlsplit(app.config["BASE_URL"]).path.rstrip("/") or "/"
+    if base_path != app.config["APPLICATION_ROOT"]:
+        raise RuntimeError(
+            "BASE_URL must include the APPLICATION_ROOT path in production; "
+            f"got {base_path!r} and {app.config['APPLICATION_ROOT']!r}."
         )
 
     backend = str(app.config.get("MAIL_BACKEND") or "").lower()

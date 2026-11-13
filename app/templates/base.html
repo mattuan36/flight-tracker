@@ -42,7 +42,11 @@
 
     <footer class="site-footer">
       <span>{{ config.APP_NAME }}</span>
-      <span class="muted">{{ config.get('ENV_NAME', 'dev') }}</span>
+      <span class="footer-meta muted">
+        <span>{{ config.get('ENV_NAME', 'dev') }}</span>
+        <span aria-hidden="true">·</span>
+        <a href="{{ config.BACK_TO_PROJECTS_URL }}">{{ config.BACK_TO_PROJECTS_LABEL }}</a>
+      </span>
     </footer>
 
     {% block scripts %}{% endblock %}

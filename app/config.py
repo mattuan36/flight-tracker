@@ -82,10 +82,11 @@ def base_config() -> dict:
     """Settings shared by every environment."""
     secret_key = os.environ.get("SECRET_KEY") or None
     database_url = normalize_database_url(os.environ.get("DATABASE_URL", ""))
+    admin_email = os.environ.get("ADMIN_EMAIL", "")
 
     return {
         "APP_NAME": os.environ.get("APP_NAME", "Flight Tracker"),
-        "ADMIN_EMAIL": os.environ.get("ADMIN_EMAIL", ""),
+        "ADMIN_EMAIL": admin_email,
         "BASE_URL": (os.environ.get("BASE_URL") or DEFAULT_BASE_URL).rstrip("/"),
         # ``mock`` is the safe default. Set ``serpapi`` for live checks; the
         # budget guard is applied in the check service, not in a web request.
@@ -102,6 +103,17 @@ def base_config() -> dict:
         # the default, so a flight is checked once per day, not at a fixed time.
         "CHECK_TASK_MINUTE": int(os.environ.get("CHECK_TASK_MINUTE", "0")),
         "CHECK_MAX_CALLS_PER_RUN": int(os.environ.get("CHECK_MAX_CALLS_PER_RUN", "20")),
+        # Mail: ``console`` is the local/test default. Production must choose
+        # ``smtp`` and provide a working relay; config validation enforces that.
+        "MAIL_BACKEND": (os.environ.get("MAIL_BACKEND") or "console").strip().lower(),
+        "MAIL_FROM": os.environ.get("MAIL_FROM") or admin_email or "flight-tracker@localhost",
+        "SMTP_HOST": os.environ.get("SMTP_HOST", ""),
+        "SMTP_PORT": int(os.environ.get("SMTP_PORT", "587")),
+        "SMTP_USER": os.environ.get("SMTP_USER", ""),
+        "SMTP_PASSWORD": os.environ.get("SMTP_PASSWORD", ""),
+        "SMTP_USE_TLS": _bool("SMTP_USE_TLS", True),
+        "SMTP_USE_SSL": _bool("SMTP_USE_SSL", False),
+        "SMTP_TIMEOUT_SECONDS": int(os.environ.get("SMTP_TIMEOUT_SECONDS", "20")),
         "SECRET_KEY": secret_key,
         "DATABASE_URL": database_url,
         "SQLALCHEMY_DATABASE_URI": database_url or _dev_database_uri(),
@@ -154,6 +166,11 @@ def test_config() -> dict:
             "TESTING": True,
             "PRICE_PROVIDER": "mock",
             "SERPAPI_KEY": "",
+            "MAIL_BACKEND": "console",
+            "MAIL_FROM": "alerts@example.com",
+            "SMTP_HOST": "",
+            "SMTP_USER": "",
+            "SMTP_PASSWORD": "",
             "SECRET_KEY": "test-secret",
             "SQLALCHEMY_DATABASE_URI": "sqlite://",
             "SQLALCHEMY_ENGINE_OPTIONS": {
@@ -212,4 +229,20 @@ def validate(app, env_name: str) -> None:
     if app.config["BASE_URL"].startswith(DEFAULT_BASE_URL):
         raise RuntimeError(
             "BASE_URL must be the public https URL in production; invite links are built from it."
+        )
+
+    backend = str(app.config.get("MAIL_BACKEND") or "").lower()
+    if backend not in {"console", "smtp"}:
+        raise RuntimeError("MAIL_BACKEND must be 'console' or 'smtp'")
+    if backend == "console":
+        raise RuntimeError(
+            "MAIL_BACKEND=console in production would not deliver alerts; "
+            "set MAIL_BACKEND=smtp and the SMTP_* settings."
+        )
+    mail_missing = [
+        key for key in ("MAIL_FROM", "SMTP_HOST") if not str(app.config.get(key) or "").strip()
+    ]
+    if mail_missing:
+        raise RuntimeError(
+            "Production mail config is missing required settings: " + ", ".join(mail_missing)
         )

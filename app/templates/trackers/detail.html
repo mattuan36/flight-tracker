@@ -161,13 +161,21 @@
 
   {% if flight.alerts %}
     <section class="panel">
-      <h2 class="section-title">Alerts sent</h2>
+      <h2 class="section-title">Alerts</h2>
       <ul class="plain-list">
         {% for alert in flight.alerts|sort(attribute='sent_at', reverse=true) %}
           <li>
-            {{ alert.sent_at|localdt }} — {{ alert.price_cents|money(flight.currency) }}
+            {% if alert.email_status == 'sent' %}
+              {{ alert.sent_at|localdt }}
+            {% else %}
+              {{ alert.sent_at|localdt }} — attempt {{ alert.email_attempts }}/3
+            {% endif %}
+            — {{ alert.price_cents|money(flight.currency) }}
             against a target of {{ alert.target_cents|money(flight.currency) }}
             <span class="badge">{{ alert.email_status }}</span>
+            {% if alert.last_error %}
+              <span class="muted small">{{ alert.last_error }}</span>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>

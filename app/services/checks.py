@@ -12,8 +12,8 @@ from datetime import datetime, timedelta
 from flask import current_app
 
 from ..extensions import db
-from ..models import PriceCheck, TrackedFlight, utcnow
-from . import budget
+from ..models import Alert, PriceCheck, TrackedFlight, utcnow
+from . import alerts, budget
 from .prices import NoMatchingFare, PriceProvider, ProviderError, get_provider
 
 
@@ -118,11 +118,13 @@ def check_flight(
 
 
 class RunResults(list[tuple[TrackedFlight, PriceCheck]]):
-    """Checks performed this run, plus the trackers the budget had to skip."""
+    """Checks performed this run, plus alerts, retries and skipped trackers."""
 
     def __init__(self) -> None:
         super().__init__()
         self.skipped: list[tuple[TrackedFlight, str]] = []
+        self.alerts: list[Alert] = []
+        self.retries: dict[str, int] = {"attempted": 0, "sent": 0, "failed": 0}
 
 
 def run_checks(
@@ -142,6 +144,11 @@ def run_checks(
     """
     provider = provider or get_provider()
     now = now or utcnow()
+    results = RunResults()
+
+    # Retry mail from earlier runs before evaluating today's prices. This also
+    # runs when nothing is due, because a failed send is not a price check.
+    results.retries = alerts.process_pending(now=now, user_id=user_id, flight_id=flight_id)
 
     query = (
         db.select(TrackedFlight)
@@ -163,7 +170,6 @@ def run_checks(
     uses_budget = provider.name == budget.SERPAPI_PROVIDER
     per_run_cap = max(0, int(current_app.config.get("CHECK_MAX_CALLS_PER_RUN", 20)))
     reserved_this_run = 0
-    results = RunResults()
 
     for flight in flights:
         calls = 1
@@ -181,11 +187,16 @@ def run_checks(
                 continue
             reserved_this_run += calls
 
-        results.append((flight, check_flight(flight, provider, now=now)))
+        check = check_flight(flight, provider, now=now)
+        results.append((flight, check))
         # Commit each observation before the next reservation. ``reserve`` may
         # roll back when the cap is reached, and that must not undo a check that
-        # already ran.
+        # already ran. The alert service commits its own pending row before it
+        # tries to send, so a mail failure never loses the observation either.
         db.session.commit()
+        alert = alerts.create_and_deliver(flight, check, now=now)
+        if alert is not None:
+            results.alerts.append(alert)
 
     if results.skipped:
         current_app.logger.warning(

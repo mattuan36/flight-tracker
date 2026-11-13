@@ -26,7 +26,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..extensions import db
 from ..models import User, utcnow
 from ..services import invites as invite_service
-from ..services import passwords, throttle
+from ..services import mailer, passwords, throttle
 from ..services.tokens import looks_like_token, token_url
 from .forms import (
     AcceptInviteForm,
@@ -266,13 +266,21 @@ def forgot_password():
         user = db.session.scalar(db.select(User).where(User.email == email))
 
         if user is not None and user.is_active:
-            passwords.request_reset(user, requested_ip=request.remote_addr)
+            _reset, raw = passwords.request_reset(user, requested_ip=request.remote_addr)
             db.session.commit()
+            try:
+                mailer.send_password_reset(
+                    to=user.email,
+                    reset_url=build_reset_link(raw),
+                    expires_minutes=int(current_app.config["RESET_TTL_MINUTES"]),
+                )
+            except mailer.MailError:
+                current_app.logger.exception("password reset email failed for user %s", user.id)
 
-        # Same response either way. Until M6 ships the mailer, an admin prints
-        # the link with `flask reset-link EMAIL`.
+        # Same response either way, and the same wording whether the address
+        # exists or the mail relay is having a bad day.
         flash(
-            "If that address has an account, a reset link is waiting to be sent to you.",
+            "If that address has an account, a reset email is on its way.",
             "info",
         )
         return redirect(url_for("auth.login"))

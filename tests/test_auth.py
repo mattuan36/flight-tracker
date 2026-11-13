@@ -320,6 +320,47 @@ def test_forgot_password_answers_the_same_way_for_known_and_unknown_addresses(cl
     assert known.headers["Location"] == unknown.headers["Location"] == "/login"
 
 
+def test_forgot_password_emails_a_reset_link(client, monkeypatch):
+    make_user()
+    sent = []
+    monkeypatch.setattr("app.services.mailer.send_email", lambda **kwargs: sent.append(kwargs))
+
+    response = client.post("/forgot-password", data={"email": "friend@example.com"})
+
+    assert response.status_code == 302
+    assert len(sent) == 1
+    assert sent[0]["to"] == "friend@example.com"
+    assert "/reset-password/" in sent[0]["text_body"]
+    assert client.application.config["BASE_URL"] in sent[0]["text_body"]
+
+
+def test_forgot_password_does_not_email_unknown_addresses(client, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.services.mailer.send_email", lambda **kwargs: sent.append(kwargs))
+
+    response = client.post("/forgot-password", data={"email": "nobody@example.com"})
+
+    assert response.status_code == 302
+    assert sent == []
+
+
+def test_a_mail_failure_does_not_reveal_whether_the_account_exists(client, monkeypatch):
+    from app.services.mailer import MailError
+
+    make_user()
+
+    def broken(**kwargs):
+        raise MailError("relay unavailable")
+
+    monkeypatch.setattr("app.services.mailer.send_email", broken)
+
+    response = client.post("/forgot-password", data={"email": "friend@example.com"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+    assert b"relay unavailable" not in response.data
+
+
 def test_reset_link_changes_the_password_and_signs_in(client):
     user = make_user()
     reset, raw = passwords.request_reset(user)

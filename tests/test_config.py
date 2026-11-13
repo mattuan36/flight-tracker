@@ -47,11 +47,24 @@ def test_prod_accepts_complete_config(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "a" * 48)
     monkeypatch.setenv("DATABASE_URL", "mysql://user:pw@host.example.com/db")
     monkeypatch.setenv("BASE_URL", "https://flights.example.com")
+    monkeypatch.setenv("MAIL_BACKEND", "smtp")
+    monkeypatch.setenv("MAIL_FROM", "alerts@flights.example.com")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
 
     app = create_app("prod")
     assert app.config["SQLALCHEMY_DATABASE_URI"].startswith("mysql+pymysql://")
     assert app.config["SESSION_COOKIE_SECURE"] is True
     assert app.config["DEBUG"] is False
+
+
+def test_prod_refuses_console_mail(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "a" * 48)
+    monkeypatch.setenv("DATABASE_URL", "mysql://user:pw@host.example.com/db")
+    monkeypatch.setenv("BASE_URL", "https://flights.example.com")
+    monkeypatch.setenv("MAIL_BACKEND", "console")
+
+    with pytest.raises(RuntimeError, match="MAIL_BACKEND"):
+        create_app("prod")
 
 
 def test_dev_defaults_to_mock_provider_and_sqlite(monkeypatch):

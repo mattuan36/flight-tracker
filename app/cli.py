@@ -47,6 +47,12 @@ def _settings_rows(app) -> list[tuple[str, str]]:
         ("PRICE_PROVIDER", str(app.config["PRICE_PROVIDER"])),
         ("SERPAPI_KEY", _mask_secret(app.config.get("SERPAPI_KEY"))),
         ("SERPAPI_MONTHLY_CAP", str(app.config.get("SERPAPI_MONTHLY_CAP"))),
+        ("CHECK_TASK_MINUTE", str(app.config.get("CHECK_TASK_MINUTE"))),
+        ("CHECK_MAX_CALLS_PER_RUN", str(app.config.get("CHECK_MAX_CALLS_PER_RUN"))),
+        ("MAIL_BACKEND", str(app.config.get("MAIL_BACKEND"))),
+        ("MAIL_FROM", str(app.config.get("MAIL_FROM") or "<not set>")),
+        ("SMTP_HOST", str(app.config.get("SMTP_HOST") or "<not set>")),
+        ("SMTP_PORT", str(app.config.get("SMTP_PORT"))),
         ("ADMIN_EMAIL", str(app.config.get("ADMIN_EMAIL") or "<not set>")),
         ("SECRET_KEY", _mask_secret(app.config.get("SECRET_KEY"))),
         ("DATABASE_URL", _redact_url(str(app.config.get("DATABASE_URL") or ""))),
@@ -120,7 +126,7 @@ def check_prices_command(email: str | None, flight_id: int | None, run_all: bool
     The SerpAPI path is budget-guarded in ``checks.run_checks``.
     """
     from .models import TrackedFlight, User
-    from .services import checks
+    from .services import alerts, checks
     from .services.prices import get_provider
 
     provider = get_provider()
@@ -148,10 +154,14 @@ def check_prices_command(email: str | None, flight_id: int | None, run_all: bool
     results = checks.run_checks(
         provider=provider, only_due=not run_all, user_id=user_id, flight_id=flight_id
     )
+    retry_line = _retry_line(results.retries)
+    if retry_line:
+        click.echo(retry_line)
     if not results and not results.skipped:
         click.echo("nothing due; use --all to check every active tracker")
         return
 
+    alerts_by_check = {alert.price_check_id: alert for alert in results.alerts}
     ok = 0
     for flight, check in results:
         if check.ok:
@@ -166,6 +176,16 @@ def check_prices_command(email: str | None, flight_id: int | None, run_all: bool
                 f"{stops_label(flight.stops_auto_relaxed_from)} to "
                 f"{stops_label(flight.max_stops)}"
             )
+        alert = alerts_by_check.get(check.id)
+        if alert is not None:
+            if alert.email_status == "sent":
+                click.echo(f"  alert sent ({format_cents(alert.price_cents, flight.currency)})")
+            else:
+                click.echo(
+                    "  alert failed "
+                    f"(attempt {alert.email_attempts}/{alerts.MAX_EMAIL_ATTEMPTS}): "
+                    f"{alert.last_error or 'unknown error'}"
+                )
 
     for flight, reason in results.skipped:
         click.echo(f"{flight.route:<8} {flight.depart_date.isoformat()}  skipped: {reason}")
@@ -174,6 +194,31 @@ def check_prices_command(email: str | None, flight_id: int | None, run_all: bool
         f"\n{len(results)} checked, {ok} ok, {len(results) - ok} failed, "
         f"{len(results.skipped)} skipped"
     )
+    alert_line = _alert_line(results)
+    if alert_line:
+        click.echo(alert_line)
+
+
+def _retry_line(retries: dict[str, int]) -> str | None:
+    if not retries.get("attempted"):
+        return None
+    return (
+        f"retried {retries['attempted']} alert email(s): "
+        f"{retries['sent']} sent, {retries['failed']} failed"
+    )
+
+
+def _alert_line(results) -> str | None:
+    sent = results.retries.get("sent", 0)
+    failed = results.retries.get("failed", 0)
+    for alert in results.alerts:
+        if alert.email_status == "sent":
+            sent += 1
+        else:
+            failed += 1
+    if not sent and not failed:
+        return None
+    return f"{sent} alert email(s) sent, {failed} failed"
 
 
 @click.command("probe-prices")

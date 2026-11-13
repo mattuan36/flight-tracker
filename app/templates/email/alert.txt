@@ -1,0 +1,11 @@
+{% if mode == "target" %}Fare alert{% else %}New low fare{% endif %}: {{ route }} at {{ price }}
+
+{{ app_name }} found a fare on {{ route }} for {{ depart_date }}{% if return_date %}, returning {{ return_date }}{% endif %}.
+
+Current fare: {{ price }}
+{% if mode == "target" %}Your target:   {{ target }}{% else %}Baseline:      {{ target }}{% endif %}
+Carrier:       {{ airline or "Not reported" }}
+
+View the flight: {{ detail_url }}
+
+You are receiving this because you set up a price alert in {{ app_name }}.

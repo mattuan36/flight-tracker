@@ -17,7 +17,7 @@ does that and writes the results to the database.
 | M3 trackers, dashboard, mock price checks | done |
 | M4b SerpAPI adapter, stops schema, budget guard, probe CLI | done |
 | M5 live checks, auto-relax, USD daily demo data | done |
-| M6 alerts and mailer | planned |
+| M6 alerts and mailer | done |
 
 ## Requirements
 
@@ -87,9 +87,11 @@ display name. No composition rules.
 Sessions last 30 days and carry `session_version`; bumping it (disable, password
 reset) ends every device on its next request, including the remember cookie.
 
-**Password reset:** `flask reset-link` prints the link and the admin sends it by
-hand. `/forgot-password` already creates the same single-use token (60 minutes);
-M6 replaces the hand-sending with the mailer. Until then the page says so.
+**Password reset:** `/forgot-password` creates a single-use token (60 minutes)
+and emails the link through the same mailer as price alerts. The response is the
+same whether the address exists or delivery fails. An admin can still print a
+link with `flask reset-link` as an emergency fallback. Invite emails remain
+CLI-only in this milestone: `flask invite` prints a link to pass on.
 
 ## Tracking flights
 
@@ -111,11 +113,14 @@ flask --app wsgi probe-prices --route PDX-OAK --airline AS --airline WN
 ```
 
 Web requests never call a fare provider: the dashboard only reads the database.
-`check-prices` fetches and records quotes. Set `PRICE_PROVIDER=serpapi` and a
-`SERPAPI_KEY` for live checks; `mock` remains the free local default. The check
-service reserves one search for a one-way and two for a return before calling the
-provider. It stops at the hard monthly cap and at `CHECK_MAX_CALLS_PER_RUN`, and
-reports skipped trackers instead of exceeding the budget.
+`check-prices` fetches and records quotes, then evaluates and sends alerts. Set
+`PRICE_PROVIDER=serpapi` and a `SERPAPI_KEY` for live checks; `mock` remains the
+free local default. The check service reserves one search for a one-way and two
+for a return before calling the provider. It stops at the hard monthly cap and
+at `CHECK_MAX_CALLS_PER_RUN`, and reports skipped trackers instead of exceeding
+the budget. The same pipeline is exposed as `python -m jobs.check_prices` for
+the hourly scheduled task; it retries failed alert emails even when no fare is
+due.
 
 The form defaults to non-stop, USD and a daily check. It also has a per-tracker
 airline filter: choose one or more IATA codes, or leave the list empty to search
@@ -136,6 +141,28 @@ page is scoped to the signed-in account, and another account's tracker answers
 404 rather than 403 so ids cannot be probed. The old free-text `airline` column
 is kept only for existing data; new trackers use `airline_filter` and
 `last_airline`.
+
+## Alerts and email
+
+A successful check is evaluated immediately. Failed checks, paused trackers,
+past-dated flights and budget-skipped flights never create an alert.
+
+- **Below a target:** alert on the first crossing from above the target to
+  at/below it, then only on a new low while the fare stays below target. If the
+  fare goes back above the target, the next crossing is a fresh alert.
+- **Any drop:** the first successful fare becomes the baseline and never alerts.
+  Later emails need a genuinely lower fare than the previous alert.
+- Failed delivery keeps the alert and retries it at the start of the next
+  scheduled run, up to **3 attempts** total. The tracker's last-alert marker only
+  moves after a successful send, and a pending retry blocks a duplicate alert
+  from stacking behind it.
+
+The mailer has two transports. `console` prints the full message to stdout and
+is the safe local/test default. `smtp` uses a normal relay with STARTTLS (587) or
+implicit TLS (465). Production refuses to start with `MAIL_BACKEND=console`, so a
+real deployment cannot silently stop sending. Alert and reset links are built
+from `BASE_URL`; when the app is mounted at `/flight/`, that setting must include
+the prefix.
 
 ## Tests and linting
 
@@ -166,7 +193,7 @@ alembic downgrade base                          # drop everything
 | `invites` | one-time signup tokens (stored as a hash) |
 | `tracked_flights` | route, airline filter, last winning carrier, dates, stops ceiling, target price, last known price |
 | `price_checks` | append-only observation history, including failures and the winning carrier |
-| `alerts` | one row per email we decided to send, with an idempotency key |
+| `alerts` | one row per email we decided to send, with delivery attempts, last error and an idempotency key |
 | `api_usage` | per-provider daily call counter for the budget guard |
 | `password_resets` | single-use reset tokens (hashed), 60-minute expiry |
 | `login_attempts` | sign-in audit; backs the throttling windows |
@@ -212,6 +239,12 @@ It refuses to run when `APP_ENV=prod` without `--force`.
 | `SERPAPI_TIMEOUT_SECONDS` | `20` | One retry on timeout/5xx, never on 4xx |
 | `CHECK_TASK_MINUTE` | `0` | The hourly task's minute, used for next-check wording |
 | `CHECK_MAX_CALLS_PER_RUN` | `20` | Stays below SerpAPI's 50/hour limit |
+| `MAIL_BACKEND` | `console` | `console` locally; production requires `smtp` |
+| `MAIL_FROM` | `ADMIN_EMAIL` or `flight-tracker@localhost` | Envelope sender |
+| `SMTP_HOST` / `SMTP_PORT` | blank / `587` | Relay host and port; required with `smtp` |
+| `SMTP_USER` / `SMTP_PASSWORD` | blank | Optional if the relay authenticates another way |
+| `SMTP_USE_TLS` / `SMTP_USE_SSL` | `true` / `false` | STARTTLS or implicit TLS (465) |
+| `SMTP_TIMEOUT_SECONDS` | `20` | Connection and send timeout |
 | `ADMIN_EMAIL` | blank | Shown in "ask for a new invite" messages |
 | `INVITE_TTL_DAYS` | `7` | Invite lifetime, printed by `flask invite` |
 | `RESET_TTL_MINUTES` | `60` | Reset link lifetime |
@@ -227,8 +260,10 @@ Not wired up yet. The shape it will take:
 - `git pull` + **Reload** in the Web tab
 - `.env` in the project root, read by both the WSGI app and the scheduled task
   (the WSGI file's environment is *not* inherited by tasks)
+- `MAIL_BACKEND=smtp` with a working relay in production; the app refuses to
+  start with the console transport there
 - scheduled task:
-  `/home/<user>/.virtualenvs/flight-tracker/bin/python -m jobs.check_prices`
+  `cd /home/<user>/flight-tracker && /home/<user>/.virtualenvs/flight-tracker/bin/python -m jobs.check_prices`
 - `/health` used as the post-deploy smoke check
 
 ## License

@@ -321,6 +321,9 @@ class Alert(Base):
     target_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
     email_status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    email_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
 
     tracked_flight: Mapped[TrackedFlight] = relationship(back_populates="alerts")

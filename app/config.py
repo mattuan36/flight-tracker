@@ -166,6 +166,7 @@ def base_config() -> dict:
         # An invite form should not expire while a friend is reading the email
         # and deciding; the token in the URL is the real gate.
         "WTF_CSRF_TIME_LIMIT": None,
+        "WTF_CSRF_SSL_STRICT": False,
     }
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from jobs.check_prices import run
@@ -42,6 +43,33 @@ def test_job_runs_due_checks_and_sends_an_alert(app, monkeypatch):
     assert db.session.scalar(select(PriceCheck)) is not None
     assert len(results.alerts) == 1
     assert len(sent) == 1
+
+
+def test_job_reports_not_due_on_the_next_run(app, monkeypatch, caplog):
+    user = make_user()
+    flight = TrackedFlight(
+        user_id=user.id,
+        origin_iata="PDX",
+        dest_iata="OAK",
+        depart_date=utcnow().date() + timedelta(days=90),
+        currency="USD",
+        target_price_cents=1_000_000,
+        mode="target",
+    )
+    db.session.add(flight)
+    db.session.commit()
+    monkeypatch.setattr("app.services.mailer.send_email", lambda **kwargs: None)
+
+    first = run(app=app)
+    assert len(first) == 1
+
+    caplog.set_level(logging.INFO, logger="jobs.check_prices")
+    second = run(app=app)
+
+    assert len(second) == 0
+    assert len(second.not_due) == 1
+    assert second.skipped == []
+    assert "0 checked, 0 ok, 1 not due, 0 budget-skipped" in caplog.text
 
 
 def test_job_refuses_serpapi_without_a_key(app, monkeypatch):

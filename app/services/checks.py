@@ -122,6 +122,7 @@ class RunResults(list[tuple[TrackedFlight, PriceCheck]]):
 
     def __init__(self) -> None:
         super().__init__()
+        self.not_due: list[TrackedFlight] = []
         self.skipped: list[tuple[TrackedFlight, str]] = []
         self.alerts: list[Alert] = []
         self.retries: dict[str, int] = {"attempted": 0, "sent": 0, "failed": 0}
@@ -165,7 +166,13 @@ def run_checks(
 
     flights = list(db.session.scalars(query))
     if only_due:
-        flights = [flight for flight in flights if is_due(flight, now)]
+        due_flights = []
+        for flight in flights:
+            if is_due(flight, now):
+                due_flights.append(flight)
+            else:
+                results.not_due.append(flight)
+        flights = due_flights
 
     uses_budget = provider.name == budget.SERPAPI_PROVIDER
     per_run_cap = max(0, int(current_app.config.get("CHECK_MAX_CALLS_PER_RUN", 20)))

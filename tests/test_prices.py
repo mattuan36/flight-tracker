@@ -292,10 +292,13 @@ def test_due_respects_the_check_interval():
     user = make_user()
     make_flight(user, last_checked_at=utcnow() - timedelta(hours=1), check_interval_hours=12)
 
-    assert checks.run_checks(provider=MockProvider()) == []
+    results = checks.run_checks(provider=MockProvider())
+    assert results == []
+    assert len(results.not_due) == 1
 
     forced = checks.run_checks(provider=MockProvider(), only_due=False)
     assert len(forced) == 1
+    assert forced.not_due == []
 
 
 def test_paused_trackers_are_never_checked():

@@ -117,10 +117,11 @@ Web requests never call a fare provider: the dashboard only reads the database.
 `PRICE_PROVIDER=serpapi` and a `SERPAPI_KEY` for live checks; `mock` remains the
 free local default. The check service reserves one search for a one-way and two
 for a return before calling the provider. It stops at the hard monthly cap and
-at `CHECK_MAX_CALLS_PER_RUN`, and reports skipped trackers instead of exceeding
-the budget. The same pipeline is exposed as `python -m jobs.check_prices` for
-the hourly scheduled task; it retries failed alert emails even when no fare is
-due.
+at `CHECK_MAX_CALLS_PER_RUN`, and reports budget-skipped trackers instead of
+exceeding the budget. The same pipeline is exposed as
+`python -m jobs.check_prices` for the hourly scheduled task; it retries failed
+alert emails even when no fare is due, and its summary distinguishes not-due
+trackers from budget-skipped ones.
 
 The form defaults to non-stop, USD and a daily check. It also has a per-tracker
 airline filter: choose one or more IATA codes, or leave the list empty to search

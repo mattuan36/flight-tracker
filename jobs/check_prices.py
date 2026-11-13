@@ -30,10 +30,11 @@ def run(app=None) -> checks.RunResults:
 
         results = checks.run_checks(provider=provider)
         log.info(
-            "Price run: %d checked, %d ok, %d skipped, %d alert(s), "
-            "%d retry attempt(s) (%d sent, %d failed)",
+            "Price run: %d checked, %d ok, %d not due, %d budget-skipped, "
+            "%d alert(s), %d retry attempt(s) (%d sent, %d failed)",
             len(results),
             sum(1 for _flight, check in results if check.ok),
+            len(results.not_due),
             len(results.skipped),
             len(results.alerts),
             results.retries["attempted"],

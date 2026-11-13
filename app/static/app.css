@@ -144,10 +144,6 @@ a { color: var(--accent); }
   border-color: var(--accent);
 }
 
-select[multiple].input {
-  min-height: 9rem;
-}
-
 .field-error {
   margin: 0;
   color: var(--danger);
@@ -392,6 +388,19 @@ select[multiple].input {
 .field-label { font-size: 0.88rem; font-weight: 600; }
 .radio-row { display: flex; gap: 1rem; flex-wrap: wrap; }
 .radio { display: flex; align-items: center; gap: 0.4rem; font-weight: 400; }
+.checkbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+.checkbox-list li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.92rem; }
+.checkbox-list input { margin: 0; accent-color: var(--accent); }
 .form-actions {
   display: flex;
   align-items: center;

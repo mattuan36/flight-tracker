@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -71,6 +72,15 @@ def payload(**overrides) -> dict[str, str]:
     }
     values.update(overrides)
     return values
+
+
+def checked_airlines(body: bytes) -> set[bytes]:
+    tags = re.findall(rb"<input[^>]*>", body)
+    return {
+        re.search(rb'value="([^"]+)"', tag).group(1)
+        for tag in tags
+        if b'name="airlines"' in tag and b"checked" in tag
+    }
 
 
 # --- dashboard ------------------------------------------------------------
@@ -196,6 +206,19 @@ def test_missing_stops_field_defaults_to_nonstop(client):
     )
 
     assert db.session.scalar(select(TrackedFlight)).max_stops == 0
+
+
+def test_new_flight_form_renders_airline_checkboxes(client):
+    make_user()
+    sign_in(client)
+
+    response = client.get("/flights/new")
+
+    assert response.status_code == 200
+    assert b'class="checkbox-list"' in response.data
+    assert b'name="airlines"' in response.data
+    assert b'type="checkbox"' in response.data
+    assert b"<select multiple" not in response.data
 
 
 def test_airline_filter_saves_codes_and_renders_names(client):
@@ -458,8 +481,7 @@ def test_edit_form_is_prefilled(client):
     assert b'value="420.50"' in body
     assert b'value="LHR"' in body
     assert b'<option selected value="1">1 stop or fewer</option>' in body
-    assert b'<option selected value="AA">American</option>' in body
-    assert b'<option selected value="WN">Southwest</option>' in body
+    assert checked_airlines(body) == {b"AA", b"WN"}
     assert b"Every 12 hours" in body
 
 

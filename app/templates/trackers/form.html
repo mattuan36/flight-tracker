@@ -14,7 +14,8 @@
       you choose otherwise.
     </p>
 
-    <form method="post" action="{{ request.path }}" class="stack">
+    {% set form_action = url_for('trackers.edit', flight_id=flight.id) if flight else url_for('trackers.new') %}
+    <form method="post" action="{{ form_action }}" class="stack">
       {{ form.hidden_tag() }}
 
       <div class="field-row">
@@ -26,7 +27,13 @@
         every carrier.
       </p>
 
-      {{ field(form.airlines) }}
+      <div class="field">
+        <span class="field-label">{{ form.airlines.label.text }}</span>
+        {{ form.airlines(class_="checkbox-list") }}
+        {% for error in form.airlines.errors %}
+          <p class="field-error">{{ error }}</p>
+        {% endfor %}
+      </div>
       <p class="hint muted small">{{ form.airlines.description }}</p>
 
       <div class="field-row">

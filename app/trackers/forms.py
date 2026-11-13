@@ -14,6 +14,7 @@ from wtforms import (
     SelectMultipleField,
     StringField,
     SubmitField,
+    widgets,
 )
 from wtforms.validators import (
     DataRequired,
@@ -62,8 +63,9 @@ class FlightForm(FlaskForm):
         "Airlines",
         choices=AIRLINE_CHOICES,
         coerce=str,
+        widget=widgets.ListWidget(prefix_label=False),
+        option_widget=widgets.CheckboxInput(),
         description="Leave all unchecked to search every airline.",
-        render_kw={"size": 8},
     )
     depart_date = DateField("Departing", validators=[DataRequired("Pick a departure date.")])
     return_date = DateField("Returning (optional)", validators=[Optional()])

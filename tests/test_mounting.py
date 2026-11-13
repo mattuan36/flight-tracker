@@ -8,6 +8,8 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.test import Client, TestResponse
 
 from app import create_app
+from app.extensions import db
+from app.models import User
 
 
 def _prod_env(monkeypatch) -> None:
@@ -123,3 +125,36 @@ def test_mount_prefixes_urls_and_keeps_the_host_session_apart(app):
 
     assert client.get_cookie("session", path="/") is not None
     assert client.get_cookie("flight_session", path="/flight") is not None
+
+
+def test_mounted_tracker_form_action_keeps_the_mount_prefix(app):
+    app.config.update(
+        APPLICATION_ROOT="/flight",
+        BASE_URL="https://flights.example.com/flight",
+        SESSION_COOKIE_NAME="flight_session",
+        SESSION_COOKIE_PATH="/flight",
+        REMEMBER_COOKIE_NAME="flight_remember",
+        REMEMBER_COOKIE_PATH="/flight",
+    )
+
+    user = User(email="mounted@example.com", display_name="Mounted", timezone="UTC")
+    user.set_password("a-long-enough-password")
+    db.session.add(user)
+    db.session.commit()
+
+    host = Flask("web-projects")
+    mounted = DispatcherMiddleware(host.wsgi_app, {"/flight": app.wsgi_app})
+    client = Client(mounted, TestResponse)
+
+    login = client.post(
+        "/flight/login",
+        data={"email": "mounted@example.com", "password": "a-long-enough-password"},
+    )
+    assert login.status_code == 302
+
+    response = client.get("/flight/flights/new")
+
+    assert response.status_code == 200
+    assert b'action="/flight/flights/new"' in response.data
+    assert b'name="airlines"' in response.data
+    assert b'type="checkbox"' in response.data
